@@ -84,6 +84,9 @@ jobs:
           cat > release-notes.txt <<'NOTES'
           Готовые приложения ag-repatch. Установка Python и сборка из исходников не нужны.
 
+          Поддерживаются Antigravity IDE и самостоятельный agy для работы с Gemini.
+          Для agy установка Antigravity IDE не требуется.
+
           - Windows: скачайте и откройте ag-repatch-windows-x64.exe.
           - Mac с Apple Silicon (M1 и новее): ag-repatch-macos-arm64.dmg.
           - Mac с Intel: ag-repatch-macos-x64.dmg.

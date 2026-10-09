@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
         self.automatic = False
         self._auto_attempted = set()
         self.log = logging.getLogger("ag-repatch")
-        self.setWindowTitle("ag-repatch — восстановление Antigravity")
+        self.setWindowTitle("ag-repatch — Antigravity IDE и Gemini через agy")
         self.setWindowIcon(app_icon())
         self.resize(1100, 800)
         self.setMinimumSize(900, 700)
@@ -116,7 +116,7 @@ class MainWindow(QMainWindow):
         self.tray = None
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = QSystemTrayIcon(app_icon(), self)
-            self.tray.setToolTip("ag-repatch — проверка Antigravity")
+            self.tray.setToolTip("ag-repatch — проверка IDE и agy")
             menu = QMenu(self)
             menu.addAction("Открыть приложение", self.show_window)
             menu.addAction("Проверить состояние", self.scan)
@@ -153,7 +153,7 @@ class MainWindow(QMainWindow):
         side.addWidget(logo)
         side.addSpacing(12)
         side.addWidget(label("ag-repatch", "brand"))
-        side.addWidget(label("Помощник Antigravity", "muted"))
+        side.addWidget(label("Antigravity IDE · agy", "muted"))
         side.addSpacing(38)
         self.nav = []
         for index, text in enumerate(("Обзор", "Настройки", "Журнал")):
@@ -189,7 +189,7 @@ class MainWindow(QMainWindow):
         return layout
 
     def build_overview(self):
-        layout = self.page("Состояние Antigravity", "Проверка, восстановление патча и настройка подключения.")
+        layout = self.page("Antigravity IDE и agy", "Gemini через agy работает без установки IDE. Проверяем то, что установлено.")
         self.hero = QFrame()
         self.hero.setObjectName("hero")
         h = QVBoxLayout(self.hero)
@@ -295,7 +295,7 @@ class MainWindow(QMainWindow):
         a.addWidget(self.auto_check)
         a.addWidget(self.auto_patch)
         a.addWidget(self.login)
-        a.addWidget(label("Автопатч работает при включённой проверке, пока запущен ag-repatch. Если Antigravity открыт, операция откладывается. Резервная копия создаётся всегда.", "muted", True))
+        a.addWidget(label("Автопатч работает при включённой проверке, пока запущен ag-repatch. Если IDE или agy запущены, операция откладывается. Резервная копия создаётся всегда.", "muted", True))
         content.addWidget(auto)
         appearance = QHBoxLayout()
         appearance.addWidget(label("Оформление", "sectionTitle"))
@@ -397,13 +397,14 @@ class MainWindow(QMainWindow):
         c = self.colors
         while self.targets_layout.count() > 1:
             item = self.targets_layout.takeAt(0)
+            item.widget().hide()
             item.widget().deleteLater()
         for item in s.items:
             w = card()
             l = QVBoxLayout(w)
             l.setContentsMargins(17, 13, 17, 13)
             r = QHBoxLayout()
-            title = "Antigravity CLI" if item.target.kind == "cli" else "Antigravity IDE"
+            title = "agy — Gemini в терминале" if item.target.kind == "cli" else "Antigravity IDE"
             r.addWidget(label(title, "sectionTitle"))
             r.addStretch()
             text, color = STATES[item.state]
@@ -419,18 +420,23 @@ class MainWindow(QMainWindow):
             self.targets_layout.insertWidget(self.targets_layout.count() - 1, w)
         self.install_count.setText("Установки · " + str(len(s.items)))
         ready = bool(s.items) and all(i.state == "patched" for i in s.items)
+        cli_only = bool(s.items) and all(i.target.kind == "cli" for i in s.items)
         if not s.items:
-            title, detail = "Antigravity не найден", "Установите Antigravity или добавьте путь к установленному приложению вручную."
+            title, detail = "Установки не найдены", "Добавьте файл agy или папку IDE. Для Gemini через agy устанавливать Antigravity IDE не нужно."
             self.hero_kicker.setText("ДОБАВЬТЕ УСТАНОВКУ")
         elif s.running and s.pending:
-            title, detail = "Сначала закройте Antigravity", "Есть файлы для восстановления. Закройте приложение и нажмите «Проверить снова»."
+            title = "Сначала закройте сеансы agy" if cli_only else "Сначала закройте запущенные клиенты"
+            detail = "Запущены: " + ", ".join(s.running) + ". После закрытия нажмите «Проверить снова»."
             self.hero_kicker.setText("НУЖНО ВАШЕ ДЕЙСТВИЕ")
         elif s.pending:
-            title, detail = "Можно восстановить патч", "Сохраним оригиналы и изменим только нужные участки файлов. После этого перезапустите Antigravity."
+            title = "Можно восстановить патч agy" if cli_only else "Можно восстановить патч"
+            detail = ("Найден самостоятельный CLI agy. Сохраним оригинал и применим патч. Установка IDE не требуется."
+                      if cli_only else "Сохраним оригиналы и изменим только нужные участки файлов. После этого перезапустите используемый клиент.")
             self.hero_kicker.setText("ОБНАРУЖЕНЫ ИСХОДНЫЕ ФАЙЛЫ")
         elif ready:
-            title = "Патч установлен"
-            detail = "Все найденные файлы пропатчены. Состояние подключения показано отдельно ниже."
+            title = "Патч agy установлен" if cli_only else "Патч установлен"
+            detail = ("CLI готов со стороны патча. Antigravity IDE не требуется. Проверьте подключение ниже и запустите agy."
+                      if cli_only else "Все найденные файлы пропатчены. Состояние подключения показано отдельно ниже.")
             self.hero_kicker.setText("ФАЙЛЫ В ПОРЯДКЕ")
         else:
             title, detail = "Нужна дополнительная проверка", "Не все файлы удалось распознать или прочитать. Неизвестные версии остаются без изменений."
@@ -454,13 +460,13 @@ class MainWindow(QMainWindow):
         menu.exec(self.add_btn.mapToGlobal(self.add_btn.rect().bottomLeft()))
 
     def add_directory(self):
-        path = QFileDialog.getExistingDirectory(self, "Папка установки Antigravity", "",
+        path = QFileDialog.getExistingDirectory(self, "Папка установки IDE или agy", "",
                                                 QFileDialog.Option.DontUseNativeDialog)
         if path:
             self.add_path(path)
 
     def add_file(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Исполняемый файл Antigravity", "", "Все файлы (*)",
+        path, _ = QFileDialog.getOpenFileName(self, "Файл agy или language_server", "", "Все файлы (*)",
                                              options=QFileDialog.Option.DontUseNativeDialog)
         if path:
             self.add_path(path)

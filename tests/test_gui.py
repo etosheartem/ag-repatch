@@ -58,7 +58,41 @@ class GuiTests(unittest.TestCase):
     def test_empty_state(self):
         self.window.render(Snapshot([], [], None, False, 'absent', '12:00'))
         self.assertIn('не найден', self.window.hero_title.text())
+        self.assertIn('устанавливать Antigravity IDE не нужно', self.window.hero_text.text())
         self.assertFalse(self.window.apply_btn.isEnabled())
+
+    def test_standalone_agy_scan_patch_and_restore_without_ide(self):
+        path = Path(self.tmp.name) / 'agy'
+        original = b'prefix ineligible middle https_proxy suffix'
+        path.write_bytes(original)
+        self.window.settings.manage_proxy = False
+        roots = ([path], [Path(self.tmp.name) / 'missing-ide'])
+        # Use real discovery, patching, backup and restoration. Only OS service
+        # calls and search roots are isolated from the machine running the test.
+        with patch.object(engine, '_roots_linux', return_value=roots), \
+             patch.object(engine, '_roots_macos', return_value=roots), \
+             patch.object(engine, '_roots_windows', return_value=roots), \
+             patch.object(engine, 'running_clients', return_value=[]), \
+             patch.object(engine, 'proxy_env_read', return_value=None), \
+             patch.object(engine, 'service_status', return_value='absent'), \
+             patch('socket.create_connection', side_effect=OSError):
+            self.window.scan()
+            self.wait_job()
+            self.assertEqual(len(self.window.snapshot.items), 1)
+            self.assertEqual(self.window.snapshot.items[0].target.kind, 'cli')
+            self.assertTrue(self.window.apply_btn.isEnabled())
+            self.assertIn('Установка IDE не требуется', self.window.hero_text.text())
+            self.window.apply_btn.click()
+            self.wait_job()
+            self.assertEqual(path.read_bytes(), original.replace(b'ineligible', b'inexigible').replace(b'https_proxy', b'AG_LS_PROXY'))
+            self.assertEqual(self.window.hero_title.text(), 'Патч agy установлен')
+            self.assertEqual(self.window.notice.text(), 'Готово — перезапустите agy')
+            self.assertTrue(self.window.restore_btn.isEnabled())
+            with patch.object(self.window, 'confirm', return_value=True):
+                self.window.restore_btn.click()
+                self.wait_job()
+            self.assertEqual(path.read_bytes(), original)
+            self.assertTrue(self.window.apply_btn.isEnabled())
 
     def test_worker_returns_to_ui_thread(self):
         with patch.object(self.window.backend, 'scan', return_value=self.snapshot()):

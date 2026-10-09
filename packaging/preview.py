@@ -36,3 +36,9 @@ window.resize(900, 700)
 app.processEvents()
 (ROOT / 'build').mkdir(exist_ok=True)
 window.grab().save(str(ROOT / 'build/preview-small.png'))
+window.resize(1100, 800)
+window.render(Snapshot([
+    Item(Target(Path('/Users/artem/.local/bin/agy'), 'cli', 'Antigravity CLI'), 'stock', False, True),
+], [], 'http://127.0.0.1:53129', True, 'running', '14:32'))
+app.processEvents()
+window.grab().save(str(dest / 'agy-only.png'))

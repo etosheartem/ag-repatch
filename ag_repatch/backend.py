@@ -278,7 +278,7 @@ class Backend:
     def apply(self, settings: Settings, targets: list[engine.Target], restore: bool = False) -> Outcome:
         busy = engine.running_clients()
         if busy:
-            return Outcome("Сначала закройте Antigravity", ["Открыты процессы: " + ", ".join(busy)], False)
+            return Outcome("Сначала закройте запущенные клиенты", ["Открыты процессы: " + ", ".join(busy)], False)
         lines, ok, changed = [], True, False
         for target in targets:
             try:
@@ -296,7 +296,8 @@ class Backend:
             env = self.configure_proxy(settings)
             ok = env.ok
             lines.extend(env.lines)
-        title = ("Оригиналы восстановлены" if restore else "Готово — перезапустите Antigravity") if ok else "Нужно ваше внимание"
+        clients = "agy" if targets and all(t.kind == "cli" for t in targets) else "используемый клиент"
+        title = ("Оригиналы восстановлены" if restore else "Готово — перезапустите " + clients) if ok else "Нужно ваше внимание"
         return Outcome(title, lines or ["Нет файлов для изменения."], ok, changed)
 
     def configure_proxy(self, settings: Settings) -> Outcome:
