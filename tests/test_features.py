@@ -235,3 +235,21 @@ class InstallUpdateTests(unittest.TestCase):
             release = updates.Release('v99.0.0', '', 'app.exe', '', hashlib.sha256(b'original').hexdigest(), 8)
             with self.assertRaises(ValueError):
                 updates.install_update(path, release)
+
+
+@unittest.skipUnless(os.name == 'nt', 'Windows file sharing')
+class WindowsSharingTests(unittest.TestCase):
+    def test_external_truncate_and_delete_are_blocked(self):
+        from ag_repatch.filelock import open_for_write
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'agy'
+            path.write_bytes(STOCK)
+            with open_for_write(path) as file:
+                lock_file(file)
+                with self.assertRaises(PermissionError):
+                    path.write_bytes(b'replacement')
+                with self.assertRaises(PermissionError):
+                    path.unlink()
+                file.seek(0)
+                self.assertEqual(file.read(), STOCK)
+            self.assertEqual(path.read_bytes(), STOCK)

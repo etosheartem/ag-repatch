@@ -241,9 +241,9 @@ def patch_file(path: pathlib.Path, dry_run: bool = False) -> Tuple[str, int, str
     only at the matched offsets. This reduces the amount written, but the full
     operation is not atomic. The GUI adds verified backups and rollback.
     """
-    mode = "rb" if dry_run else "r+b"
+    from .filelock import open_for_write
     try:
-        with open(path, mode) as f:
+        with (open(path, "rb") if dry_run else open_for_write(path)) as f:
             if not dry_run:
                 from .filelock import lock_file
                 lock_file(f)

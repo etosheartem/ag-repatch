@@ -258,8 +258,8 @@ class BackupStore:
 
     def change(self, path: pathlib.Path, restore: bool = False, recover: bool = False) -> str:
         # r+b preserves inode, executable mode and extended attributes.
-        with path.open("r+b") as f:
-            from .filelock import lock_file
+        from .filelock import lock_file, open_for_write
+        with open_for_write(path) as f:
             lock_file(f)
             initial = os.fstat(f.fileno())
             before = f.read()
