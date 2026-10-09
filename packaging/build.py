@@ -8,6 +8,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    # Windows CI may redirect output using a non-Cyrillic system code page.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            stream.reconfigure(encoding="utf-8", errors="replace")
     os.chdir(ROOT)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     sys.path.insert(0, str(ROOT))
