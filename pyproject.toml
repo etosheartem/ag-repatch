@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ag-repatch"
-version = "2.0.1"
+version = "2.0.2"
 description = "Русское графическое приложение для восстановления патча Antigravity"
 readme = "README.ru.md"
 requires-python = ">=3.10"
