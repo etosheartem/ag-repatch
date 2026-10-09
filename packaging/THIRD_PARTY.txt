@@ -11,3 +11,9 @@ Qt / PySide6: https://www.qt.io/licensing/ и https://code.qt.io/pyside/pyside-s
 
 Python: https://docs.python.org/3/license.html
 PyInstaller: https://pyinstaller.org/en/stable/license.html
+
+Сетевые проверки и обновления: Requests (Apache-2.0), urllib3 (MIT),
+certifi (MPL-2.0), charset-normalizer (MIT), idna (BSD-3-Clause).
+https://requests.readthedocs.io/ — https://urllib3.readthedocs.io/
+https://github.com/certifi/python-certifi — https://github.com/jawah/charset_normalizer
+https://github.com/kjd/idna

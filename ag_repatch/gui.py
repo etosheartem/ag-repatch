@@ -11,8 +11,8 @@ import sys
 from PySide6.QtCore import QLibraryInfo, QLocale, QLockFile, QThread, QTimer, Qt, QTranslator, Slot, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton,
+    QApplication, QDialog, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
+    QLayout, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton,
     QScrollArea, QStackedWidget, QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget,
 )
 
@@ -29,6 +29,7 @@ LIGHT = dict(bg="#f4f5fa", panel="#ffffff", raised="#eceef6", border="#dfe2ee", 
              hero="#ede9fc", green="#168264", amber="#946014", red="#bc3852")
 
 STATES = {
+    "interrupted": ("Прерванная операция", "red"),
     "stock": ("Нужен патч", "amber"), "mixed": ("Нужен патч", "amber"),
     "patched": ("Патч установлен", "green"), "no-signature": ("Версия не распознана", "muted"),
     "unreadable": ("Нет доступа к файлу", "red"),
@@ -62,6 +63,7 @@ def label(text="", role="", wrap=False):
 
 def button(text, callback, role=""):
     w = QPushButton(text)
+    w.setMinimumHeight(34)
     w.setCursor(Qt.CursorShape.PointingHandCursor)
     if role:
         w.setObjectName(role)
@@ -100,6 +102,12 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, TypeError) as exc:
             self.settings = Settings()
             self.load_error = "Не удалось прочитать настройки. Используются значения по умолчанию: " + str(exc)
+        self.diagnostic_checks = []
+        self.safe_history = []
+        self.latest_release = None
+        self.downloaded_update = None
+        self._offer_setup = start_scan and not self.settings.onboarding_done
+        self.item_actions = []
         self.snapshot: Snapshot | None = None
         self.thread = None
         self.busy = False
@@ -156,7 +164,7 @@ class MainWindow(QMainWindow):
         side.addWidget(label("Antigravity IDE · agy", "muted"))
         side.addSpacing(38)
         self.nav = []
-        for index, text in enumerate(("Обзор", "Настройки", "Журнал")):
+        for index, text in enumerate(("Обзор", "Настройки", "Журнал", "Диагностика", "Обновления")):
             b = button(text, lambda checked=False, i=index: self.navigate(i), "nav")
             b.setCheckable(True)
             b.setMinimumHeight(46)
@@ -176,6 +184,8 @@ class MainWindow(QMainWindow):
         self.build_overview()
         self.build_settings()
         self.build_log()
+        self.build_diagnostics()
+        self.build_updates()
         self.navigate(0)
 
     def page(self, title, description):
@@ -223,6 +233,7 @@ class MainWindow(QMainWindow):
         self.targets_layout = QVBoxLayout(self.targets_widget)
         self.targets_layout.setContentsMargins(0, 0, 0, 0)
         self.targets_layout.setSpacing(10)
+        self.targets_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self.targets_layout.addStretch()
         scroll.setWidget(self.targets_widget)
         layout.addWidget(scroll, 1)
@@ -237,6 +248,7 @@ class MainWindow(QMainWindow):
         pl.addLayout(pr)
         self.proxy_detail = label("", "muted", True)
         pl.addWidget(self.proxy_detail)
+        pl.addWidget(button("Диагностика подключения", lambda: self.navigate(3), "link"))
         layout.addWidget(proxy)
         self.notice = label("", "notice", True)
         self.notice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -249,7 +261,7 @@ class MainWindow(QMainWindow):
         self.apply_btn = button("Применить патч", self.apply_patch, "primary")
         self.apply_btn.setMinimumHeight(46)
         self.check_btn = button("Проверить снова", self.scan)
-        self.restore_btn = button("Восстановить оригиналы", self.restore)
+        self.restore_btn = button("Восстановить оригиналы", lambda: self.restore())
         actions.addWidget(self.apply_btn)
         actions.addWidget(self.check_btn)
         actions.addStretch()
@@ -291,7 +303,7 @@ class MainWindow(QMainWindow):
         self.auto_patch.setChecked(self.settings.auto_patch)
         self.login = QCheckBox("Запускать при входе в систему")
         self.login.setChecked(self.settings.start_at_login)
-        self.login.setEnabled(sys.platform in ("win32", "darwin"))
+        self.login.setEnabled(sys.platform in ("win32", "darwin", "linux"))
         a.addWidget(self.auto_check)
         a.addWidget(self.auto_patch)
         a.addWidget(self.login)
@@ -313,6 +325,9 @@ class MainWindow(QMainWindow):
         content.addWidget(self.path_list)
         content.addWidget(button("Убрать выбранный путь из поиска", self.remove_path, "link"), alignment=Qt.AlignmentFlag.AlignLeft)
         content.addWidget(button("Открыть папку резервных копий", self.open_backups, "link"), alignment=Qt.AlignmentFlag.AlignLeft)
+        content.addWidget(button("Открыть мастер первого запуска", self.open_setup, "link"))
+        if sys.platform == "linux":
+            content.addWidget(button("Добавить в меню приложений", self.install_menu, "link"))
         content.addStretch()
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -329,10 +344,168 @@ class MainWindow(QMainWindow):
         self.log_view.setPlaceholderText("Здесь появятся результаты проверок и операций.")
         layout.addWidget(self.log_view, 1)
         row = QHBoxLayout()
+        row.addWidget(button("Сохранить диагностику", self.export_report))
         row.addWidget(button("Скопировать журнал", self.copy_log))
         row.addWidget(button("Открыть папку журнала", self.open_logs))
         row.addStretch()
         layout.addLayout(row)
+
+    def build_diagnostics(self):
+        layout = self.page("Диагностика", "Проверим подключение через прокси из сохранённых настроек. Авторизация и доступ к конкретным моделям не проверяются.")
+        layout.addWidget(label("По кнопке ниже отправляются HTTPS-запросы к example.com и generativelanguage.googleapis.com. Учётные данные не используются.", "muted", True))
+        self.diagnostics_view = QTextEdit()
+        self.diagnostics_view.setReadOnly(True)
+        self.diagnostics_view.setPlaceholderText("Здесь появятся этапы проверки и подсказки.")
+        layout.addWidget(self.diagnostics_view, 1)
+        self.diagnose_btn = button("Проверить подключение", self.diagnose_connection, "primary")
+        layout.addWidget(self.diagnose_btn)
+        layout.addWidget(button("Сохранить отчёт для поддержки", self.export_report))
+
+    def build_updates(self):
+        layout = self.page("Обновления", "Текущая версия: " + __version__ + ". Проверка обращается к официальному репозиторию на GitHub.")
+        self.update_status = label("Нажмите «Проверить обновления».", "sectionTitle", True)
+        layout.addWidget(self.update_status)
+        self.release_notes = QTextEdit()
+        self.release_notes.setReadOnly(True)
+        layout.addWidget(self.release_notes, 1)
+        self.update_check_btn = button("Проверить обновления", self.check_updates)
+        self.update_download_btn = button("Скачать и проверить", self.download_update, "primary")
+        self.update_open_btn = button("Установить и перезапустить", self.open_update)
+        row = QHBoxLayout()
+        for widget in (self.update_check_btn, self.update_download_btn, self.update_open_btn):
+            row.addWidget(widget)
+        layout.addLayout(row)
+        layout.addWidget(label("Файл проверяется по SHA-256 из GitHub Releases. На Windows и Linux новая версия сохраняется в папке данных приложения; на macOS — в вашей папке «Программы». Старая версия остаётся доступной.", "muted", True))
+
+    def open_setup(self):
+        from .setup_ui import SetupDialog
+        if getattr(self, "setup_dialog", None) and self.setup_dialog.isVisible():
+            self.setup_dialog.raise_()
+            return
+        self.setup_dialog = SetupDialog(self)
+        self.setup_dialog.show()
+
+    def open_agy_docs(self):
+        QDesktopServices.openUrl(QUrl("https://www.antigravity.google/docs/cli/install/"))
+
+    def diagnose_connection(self):
+        from .diagnostics import diagnose
+        url = self.settings.proxy_url
+        self.run_job(lambda: diagnose(url), self.diagnosis_finished, "ПРОВЕРЯЕМ ПОДКЛЮЧЕНИЕ")
+
+    def diagnosis_finished(self, checks):
+        self.diagnostic_checks = checks
+        text = "\n\n".join(("✓ " if c.ok else "• ") + c.name + "\n" + c.detail for c in checks)
+        self.diagnostics_view.setPlainText(text)
+        self.report("Диагностика завершена. " + ("Проверки пройдены." if all(c.ok for c in checks) else "Есть ошибки — откройте раздел «Диагностика»."), all(c.ok for c in checks))
+
+    def export_report(self):
+        from .diagnostics import support_report
+        from .backend import atomic_write
+        import json
+        data = json.loads(support_report(self.snapshot, self.diagnostic_checks))
+        data["журнал_операций"] = self.safe_history
+        text = json.dumps(data, ensure_ascii=False, indent=2)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Отчёт для поддержки — предварительный просмотр")
+        dialog.resize(700, 500)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label("Личные пути, адрес прокси и сырой журнал исключены. Просмотрите отчёт перед сохранением. Файл никуда не отправляется.", "muted", True))
+        preview = QTextEdit()
+        preview.setReadOnly(True)
+        preview.setPlainText(text)
+        layout.addWidget(preview)
+        def save():
+            path, _ = QFileDialog.getSaveFileName(dialog, "Сохранить диагностику", "ag-repatch-diagnostics.json", "Отчёт JSON (*.json)", options=QFileDialog.Option.DontUseNativeDialog)
+            if path:
+                try:
+                    atomic_write(Path(path), text.encode("utf-8"))
+                    dialog.accept()
+                    self.report("Отчёт сохранён. Его можно приложить к обращению в репозитории.")
+                except OSError as exc:
+                    self.report("Не удалось сохранить отчёт: " + str(exc), False)
+        layout.addWidget(button("Сохранить файл", save, "primary"))
+        dialog.exec()
+
+    def check_updates(self):
+        from .updates import check_release
+        self.latest_release = None
+        self.update_status.setText("Проверяем GitHub Releases…")
+        self.run_job(check_release, self.update_checked, "ПРОВЕРЯЕМ ОБНОВЛЕНИЯ")
+
+    def update_checked(self, release):
+        self.latest_release = release
+        self.update_status.setText("Доступна версия " + release.version if release.newer else "У вас актуальная версия")
+        self.release_notes.setPlainText(release.notes)
+        self.refresh_actions()
+
+    def download_update(self):
+        from .updates import download_release
+        if not self.latest_release or not self.latest_release.newer:
+            return
+        release = self.latest_release
+        self.update_status.setText("Скачиваем " + release.version + " и проверяем SHA-256…")
+        self.run_job(lambda: download_release(release, self.backend.directory / "updates"), self.update_downloaded, "ЗАГРУЖАЕМ ОБНОВЛЕНИЕ")
+
+    def update_downloaded(self, path):
+        self.downloaded_update = path
+        self.downloaded_release = self.latest_release
+        self.update_status.setText("Обновление скачано, контрольная сумма совпала")
+        self.refresh_actions()
+
+    def open_update(self):
+        if self.busy or not self.downloaded_update:
+            return
+        from .updates import install_update
+        path, release = self.downloaded_update, self.downloaded_release
+        self.run_job(lambda: install_update(path, release), self.launch_update, "УСТАНАВЛИВАЕМ ОБНОВЛЕНИЕ")
+
+    def launch_update(self, path):
+        import subprocess
+        try:
+            command = (["open", "-n", str(path), "--args"] if path.suffix == ".app" else [str(path)])
+            subprocess.Popen(command + ["--wait-for-exit", "--updated-launch"], env=self.clean_launch_environment())
+            self.quit_app()
+        except OSError as exc:
+            self.report("Не удалось запустить обновление: " + str(exc), False)
+
+    @staticmethod
+    def clean_launch_environment():
+        env = os.environ.copy()
+        if "LD_LIBRARY_PATH_ORIG" in env:
+            env["LD_LIBRARY_PATH"] = env.pop("LD_LIBRARY_PATH_ORIG")
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        for key in ("APPIMAGE", "APPDIR", "OWD"):
+            env.pop(key, None)
+        return env
+
+    def install_menu(self):
+        from PySide6.QtCore import QBuffer, QIODevice
+        from .startup import install_linux_menu
+        buffer = QBuffer()
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        app_icon(256).pixmap(256, 256).save(buffer, "PNG")
+        try:
+            install_linux_menu(bytes(buffer.data()))
+            self.report("Ярлык добавлен в меню приложений. Храните ag-repatch в этой папке.")
+            self.settings_notice.setText("Ярлык добавлен в меню приложений.")
+        except (OSError, ValueError) as exc:
+            self.report("Не удалось создать ярлык: " + str(exc), False)
+
+    def apply_one(self, item):
+        if not self.busy:
+            self.apply_targets(copy.deepcopy(self.settings), [item.target])
+
+    def apply_targets(self, settings, targets, restore=False, recover=False):
+        if self.busy:
+            return
+        privileged = sys.platform == "linux" and any(not os.access(t.path, os.W_OK) for t in targets)
+        if privileged and not self.confirm("Нужны права администратора", "Будет показан системный запрос прав для изменения выбранных файлов. Резервные копии сохранятся в вашей папке данных.", "Запросить права"):
+            return
+        self.run_job(lambda: self.backend.apply(settings, targets, restore=restore, recover=recover, privileged=privileged),
+                     self.operation_finished, "ВОССТАНАВЛИВАЕМ ОРИГИНАЛЫ" if restore or recover else "ПРИМЕНЯЕМ ПАТЧ")
 
     def navigate(self, index):
         self.pages.setCurrentIndex(index)
@@ -345,7 +518,7 @@ class MainWindow(QMainWindow):
         self.colors = c = DARK if dark else LIGHT
         self.setStyleSheet(f"""
             QWidget {{ color: {c['text']}; font-size: 13px; }}
-            QMainWindow, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {{ background: {c['bg']}; }}
+            QMainWindow, QDialog, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {{ background: {c['bg']}; }}
             #sidebar {{ background: {c['panel']}; border-right: 1px solid {c['border']}; }}
             QLabel {{ background: transparent; }}
             #brand {{ font-size: 23px; font-weight: 700; }}
@@ -390,6 +563,12 @@ class MainWindow(QMainWindow):
         self.restore_btn.setEnabled(bool(not self.busy and s and not s.running and any(i.restorable for i in s.items)))
         for w in (self.check_btn, self.add_btn, self.save_btn, self.clear_btn):
             w.setEnabled(not self.busy)
+        for w in self.item_actions:
+            w.setEnabled(not self.busy and not (s and s.running))
+        for w in (self.diagnose_btn, self.update_check_btn):
+            w.setEnabled(not self.busy)
+        self.update_download_btn.setEnabled(bool(not self.busy and self.latest_release and self.latest_release.newer))
+        self.update_open_btn.setEnabled(bool(not self.busy and self.downloaded_update))
         self.progress.setVisible(self.busy)
 
     def render(self, s):
@@ -399,10 +578,13 @@ class MainWindow(QMainWindow):
             item = self.targets_layout.takeAt(0)
             item.widget().hide()
             item.widget().deleteLater()
+        self.item_actions = []
         for item in s.items:
             w = card()
             l = QVBoxLayout(w)
             l.setContentsMargins(17, 13, 17, 13)
+            l.setSpacing(6)
+            w.setMinimumHeight(140)
             r = QHBoxLayout()
             title = "agy — Gemini в терминале" if item.target.kind == "cli" else "Antigravity IDE"
             r.addWidget(label(title, "sectionTitle"))
@@ -415,8 +597,20 @@ class MainWindow(QMainWindow):
             path = label(str(item.target.path), "small", True)
             path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             l.addWidget(path)
-            if item.restorable:
-                l.addWidget(label("Оригинал сохранён · доступен откат", "small"))
+            l.addWidget(label("Версия: " + item.version + (" · Копия: " + item.backup_date if item.backup_date else ""), "small"))
+            actions = QHBoxLayout()
+            if item.state in ("stock", "mixed"):
+                b = button("Применить", lambda checked=False, i=item: self.apply_one(i))
+                actions.addWidget(b)
+                self.item_actions.append(b)
+            if item.restorable or item.recoverable:
+                b = button("Восстановить после сбоя" if item.recoverable else "Восстановить", lambda checked=False, i=item: self.restore(i))
+                actions.addWidget(b)
+                self.item_actions.append(b)
+            if not item.writable:
+                actions.addWidget(label("Нужны права на запись", "small"))
+            actions.addStretch()
+            l.addLayout(actions)
             self.targets_layout.insertWidget(self.targets_layout.count() - 1, w)
         self.install_count.setText("Установки · " + str(len(s.items)))
         ready = bool(s.items) and all(i.state == "patched" for i in s.items)
@@ -424,6 +618,9 @@ class MainWindow(QMainWindow):
         if not s.items:
             title, detail = "Установки не найдены", "Добавьте файл agy или папку IDE. Для Gemini через agy устанавливать Antigravity IDE не нужно."
             self.hero_kicker.setText("ДОБАВЬТЕ УСТАНОВКУ")
+        elif any(i.recoverable for i in s.items):
+            title, detail = "Обнаружена прерванная операция", "Оригинал проверен. Нажмите «Восстановить после сбоя» в карточке установки; автоматический патч для неё остановлен."
+            self.hero_kicker.setText("ДОСТУПНО ВОССТАНОВЛЕНИЕ")
         elif s.running and s.pending:
             title = "Сначала закройте сеансы agy" if cli_only else "Сначала закройте запущенные клиенты"
             detail = "Запущены: " + ", ".join(s.running) + ". После закрытия нажмите «Проверить снова»."
@@ -502,7 +699,8 @@ class MainWindow(QMainWindow):
         updated = Settings(proxy_url=self.proxy_input.text(), manage_proxy=self.manage_proxy.isChecked(),
                            auto_check=self.auto_check.isChecked(), auto_patch=self.auto_patch.isChecked(),
                            start_at_login=self.login.isChecked(), theme=self.theme.currentData(),
-                           extra_paths=[self.path_list.item(i).text() for i in range(self.path_list.count())])
+                           extra_paths=[self.path_list.item(i).text() for i in range(self.path_list.count())],
+                           onboarding_done=self.settings.onboarding_done)
         try:
             from .backend import validate_proxy
             validate_proxy(updated.proxy_url)
@@ -549,6 +747,8 @@ class MainWindow(QMainWindow):
         self.busy = False
         self.refresh_actions()
         if error:
+            if self._callback in (self.update_checked, self.update_downloaded, self.launch_update):
+                self.update_status.setText("Операция не завершена. Проверьте соединение с GitHub и повторите попытку. Подробности — в журнале.")
             self.automatic = False
             self.report("Не удалось завершить операцию: " + error, False)
             if self.snapshot:
@@ -576,6 +776,9 @@ class MainWindow(QMainWindow):
         if summary != getattr(self, "_last_summary", None):
             self.append_log(summary)
             self._last_summary = summary
+        if self._offer_setup:
+            self._offer_setup = False
+            self.open_setup()
         if self.automatic:
             self.automatic = False
             self.maybe_auto_patch(snapshot)
@@ -608,7 +811,7 @@ class MainWindow(QMainWindow):
             return
         targets = [i.target for i in self.snapshot.pending]
         settings = copy.deepcopy(self.settings)
-        self.run_job(lambda: self.backend.apply(settings, targets), self.operation_finished, "ПРИМЕНЯЕМ ПАТЧ")
+        self.apply_targets(settings, targets)
 
     def confirm(self, title, text, action):
         box = QMessageBox(self)
@@ -621,10 +824,12 @@ class MainWindow(QMainWindow):
         box.exec()
         return box.clickedButton() == yes
 
-    def restore(self):
+    def restore(self, item=None):
         if self.busy or not self.snapshot:
             return
-        targets = [i.target for i in self.snapshot.items if i.restorable]
+        selected = [item] if item is not None else [i for i in self.snapshot.items if i.restorable]
+        targets = [i.target for i in selected]
+        recover = bool(item and item.recoverable)
         if not targets or not self.confirm("Восстановление оригиналов", "Будут восстановлены сохранённые файлы этой версии. Региональное ограничение может вернуться. Автоматический патч будет выключен. Настройка прокси останется прежней.", "Восстановить"):
             return
         updated = copy.deepcopy(self.settings)
@@ -636,7 +841,7 @@ class MainWindow(QMainWindow):
             return
         self.settings = updated
         self.auto_patch.setChecked(False)
-        self.run_job(lambda: self.backend.apply(updated, targets, restore=True), self.operation_finished, "ВОССТАНАВЛИВАЕМ ОРИГИНАЛЫ")
+        self.apply_targets(updated, targets, restore=not recover, recover=recover)
 
     def clear_proxy(self):
         if self.busy or not self.confirm("Удаление настройки прокси", "Удалить AG_LS_PROXY из пользовательского окружения? Патч и служба прокси останутся без изменений. Автоматическая настройка прокси будет выключена.", "Удалить настройку"):
@@ -653,6 +858,9 @@ class MainWindow(QMainWindow):
         self.run_job(self.backend.clear_proxy, self.operation_finished, "УДАЛЯЕМ НАСТРОЙКУ ПРОКСИ")
 
     def operation_finished(self, result: Outcome):
+        from datetime import datetime
+        self.safe_history.append({"время": datetime.now().isoformat(timespec="seconds"), "событие": "операция", "успешно": result.ok, "файлы_изменены": result.changed})
+        self.safe_history = self.safe_history[-100:]
         self.report(result.title, result.ok)
         for line in result.lines:
             self.append_log(line)
@@ -788,6 +996,16 @@ def main():
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
     window = MainWindow()
+    if "--updated-launch" in sys.argv:
+        try:
+            if window.settings.start_at_login:
+                set_login_launch(True)
+            if sys.platform == "linux":
+                base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+                if (base / "applications/ag-repatch.desktop").exists():
+                    window.install_menu()
+        except (OSError, ValueError) as exc:
+            window.report("Обновление запущено, но ярлык или автозапуск не удалось обновить: " + str(exc), False)
     app.aboutToQuit.connect(window.shutdown)
     if "--background" not in sys.argv or not window.tray:
         window.show()

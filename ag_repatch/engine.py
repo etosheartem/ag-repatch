@@ -244,6 +244,9 @@ def patch_file(path: pathlib.Path, dry_run: bool = False) -> Tuple[str, int, str
     mode = "rb" if dry_run else "r+b"
     try:
         with open(path, mode) as f:
+            if not dry_run:
+                from .filelock import lock_file
+                lock_file(f)
             data = f.read()
             scan = _scan(data)
             if scan is None:

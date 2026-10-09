@@ -26,7 +26,7 @@ else:
     if mac:
         app = BUNDLE(coll, name='ag-repatch.app', icon=icon,
                      bundle_identifier='io.github.etosheartem.ag-repatch',
-                     info_plist={'CFBundleShortVersionString': '2.0.2',
+                     info_plist={'CFBundleShortVersionString': '2.1.0',
                                  'NSHighResolutionCapable': True,
                                  'CFBundleDevelopmentRegion': 'ru',
                                  'CFBundleLocalizations': ['ru']})

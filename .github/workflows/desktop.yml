@@ -60,6 +60,9 @@ jobs:
           else
             dist/ag-repatch.app/Contents/MacOS/ag-repatch --smoke-test
           fi
+      - name: Check update installation
+        if: runner.os != 'Windows'
+        run: python packaging/check_install.py
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -97,6 +100,15 @@ jobs:
         run: |
           cat > release-notes.txt <<'NOTES'
           Готовые приложения ag-repatch. Установка Python и сборка из исходников не нужны.
+
+          Новое в 2.1.0:
+          - Мастер первого запуска: установка, подключение и патч.
+          - Диагностика порта, HTTPS через прокси и ответа Google с подсказками.
+          - Проверка обновлений, загрузка с SHA-256 и установка с перезапуском.
+          - Linux: меню приложений, автозапуск и запрос прав через polkit.
+          - Отдельные действия, версия и дата копии в карточках установок.
+          - Восстановление прерванного патча и блокировка одновременной записи GUI/CLI.
+          - Предпросмотр и сохранение отчёта без личных путей, адреса прокси и сырого журнала.
 
           Поддерживаются Antigravity IDE и самостоятельный agy для работы с Gemini.
           Для agy установка Antigravity IDE не требуется.

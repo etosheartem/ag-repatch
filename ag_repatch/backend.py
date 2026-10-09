@@ -42,6 +42,24 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def installation_version(path):
+    """Read metadata; never execute an arbitrary user-selected binary."""
+    import re
+    for parent in list(path.parents)[:6]:
+        for candidate in (parent / "package.json", parent / "resources/app/package.json"):
+            try:
+                if candidate.stat().st_size > 1024 * 1024:
+                    continue
+                version = json.loads(candidate.read_text("utf-8")).get("version", "")
+                if isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+[\w.+-]*", version):
+                    return version
+            except (OSError, ValueError, AttributeError):
+                pass
+        if re.fullmatch(r"v?\d+\.\d+\.\d+[\w.+-]*", parent.name):
+            return parent.name
+    return "Не определена"
+
+
 def validate_proxy(url: str) -> str:
     if not isinstance(url, str):
         raise ValueError("Адрес прокси должен быть строкой.")
@@ -68,6 +86,7 @@ class Settings:
     start_at_login: bool = False
     theme: str = "system"
     extra_paths: list[str] = field(default_factory=list)
+    onboarding_done: bool = False
 
     @classmethod
     def load(cls, directory: pathlib.Path) -> Settings:
@@ -78,7 +97,7 @@ class Settings:
         if not isinstance(data, dict):
             raise ValueError("Файл настроек повреждён.")
         values = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
-        for key in ("manage_proxy", "auto_check", "auto_patch", "start_at_login"):
+        for key in ("manage_proxy", "auto_check", "auto_patch", "start_at_login", "onboarding_done"):
             if key in values and type(values[key]) is not bool:
                 raise ValueError("Некорректная настройка: " + key)
         if "extra_paths" in values and (not isinstance(values["extra_paths"], list)
@@ -101,6 +120,9 @@ class Item:
     state: str
     restorable: bool = False
     writable: bool = False
+    version: str = "Не определена"
+    backup_date: str = ""
+    recoverable: bool = False
 
 
 @dataclass
@@ -130,7 +152,7 @@ class BackupStore:
 
     Restore accepts only the exact patched hash associated with the original.
     The manifest is committed BEFORE patching, so interrupted writes never lose
-    the original. Partial/interrupted states are retained for manual recovery.
+    the original. Interrupted writes can be recovered only when every byte matches the verified original or its planned patch.
     """
     def __init__(self, directory: pathlib.Path):
         self.directory = directory / "backups"
@@ -167,6 +189,51 @@ class BackupStore:
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
+    def backup_date(self, path):
+        dates = []
+        for record in self._folder(path).glob("*.json"):
+            try:
+                dates.append(datetime.fromisoformat(json.loads(record.read_text("utf-8"))["created"]))
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return max(dates).strftime("%d.%m.%Y %H:%M") if dates else ""
+
+    def recovery_original(self, path, current):
+        """Allow only interrupted writes of our exact byte differences.
+
+        All other bytes must match a hash-verified original. An application
+        update or unrelated corruption is never treated as our interrupted write.
+        """
+        for record_path in self._folder(path).glob("*.json"):
+            try:
+                record = json.loads(record_path.read_text("utf-8"))
+                before = record["original"]
+                if (record["path"] != str(path.resolve()) or record["size"] != len(current)
+                        or not isinstance(before, str) or len(before) != 64
+                        or any(c not in "0123456789abcdef" for c in before)):
+                    continue
+                original = (record_path.parent / (before + ".bin")).read_bytes()
+                if digest(original) != before or len(original) != len(current) or engine._scan(original) is None:
+                    continue
+                patched = original
+                for old, new in engine.PAIRS:
+                    patched = patched.replace(old, new)
+                if digest(patched) != record["patched"] or current in (original, patched):
+                    continue
+                valid = True
+                for start in range(0, len(original), 65536):
+                    a, b, c = original[start:start+65536], patched[start:start+65536], current[start:start+65536]
+                    if c == a or c == b:
+                        continue
+                    if any(z not in (x, y) for x, y, z in zip(a, b, c)):
+                        valid = False
+                        break
+                if valid:
+                    return original
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return None
+
     @staticmethod
     def _write_differences(f, before: bytes, after: bytes) -> None:
         # Compare blocks rather than every byte of a several-hundred-MB server.
@@ -189,16 +256,15 @@ class BackupStore:
         f.flush()
         os.fsync(f.fileno())
 
-    def change(self, path: pathlib.Path, restore: bool = False) -> str:
+    def change(self, path: pathlib.Path, restore: bool = False, recover: bool = False) -> str:
         # r+b preserves inode, executable mode and extended attributes.
         with path.open("r+b") as f:
-            if os.name != "nt":
-                import fcntl
-                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            from .filelock import lock_file
+            lock_file(f)
             initial = os.fstat(f.fileno())
             before = f.read()
-            if restore:
-                after = self.original(path, before)
+            if restore or recover:
+                after = self.recovery_original(path, before) if recover else self.original(path, before)
                 if after is None:
                     raise ValueError("Нет подходящей копии: файл обновился или был изменён. Откат отменён.")
             else:
@@ -231,7 +297,7 @@ class BackupStore:
                 except OSError:
                     raise OSError("Запись и откат не завершены. Оригинал сохранён в папке резервных копий.") from exc
                 raise
-        return "Оригинал восстановлен" if restore else "Патч применён, оригинал сохранён"
+        return "Оригинал восстановлен" if restore or recover else "Патч применён, оригинал сохранён"
 
 
 class Backend:
@@ -259,10 +325,14 @@ class Backend:
                         state = "stock"
                     else:
                         state = "mixed"
-                    cached = state, self.backups.original(target.path, data) is not None
+                    recoverable = self.backups.recovery_original(target.path, data) is not None
+                    if recoverable:
+                        state = "interrupted"
+                    cached = state, self.backups.original(target.path, data) is not None, recoverable
                     self._cache = {k: v for k, v in self._cache.items() if k[0] != str(target.path)}
                     self._cache[key] = cached
-                items.append(Item(target, *cached, os.access(target.path, os.W_OK)))
+                items.append(Item(target, cached[0], cached[1], os.access(target.path, os.W_OK),
+                                  installation_version(target.path), self.backups.backup_date(target.path), cached[2]))
             except OSError:
                 items.append(Item(target, "unreadable"))
         reachable = False
@@ -275,14 +345,18 @@ class Backend:
         return Snapshot(items, engine.running_clients(), engine.proxy_env_read(), reachable,
                         engine.service_status(), datetime.now().strftime("%H:%M"))
 
-    def apply(self, settings: Settings, targets: list[engine.Target], restore: bool = False) -> Outcome:
+    def apply(self, settings: Settings, targets: list[engine.Target], restore: bool = False, recover: bool = False, privileged: bool = False) -> Outcome:
         busy = engine.running_clients()
         if busy:
             return Outcome("Сначала закройте запущенные клиенты", ["Открыты процессы: " + ", ".join(busy)], False)
         lines, ok, changed = [], True, False
         for target in targets:
             try:
-                result = self.backups.change(target.path, restore)
+                if privileged:
+                    from .privileged import apply_with_permission
+                    result = apply_with_permission(self.backups, target.path, restore, recover)
+                else:
+                    result = self.backups.change(target.path, restore, recover)
                 changed = changed or result != "Уже пропатчен"
                 lines.append(str(target.path) + "\n" + result)
             except PermissionError:
@@ -292,12 +366,12 @@ class Backend:
                 ok = False
                 lines.append(str(target.path) + "\n" + str(exc))
         self._cache.clear()
-        if settings.manage_proxy and not restore and ok:
+        if settings.manage_proxy and not restore and not recover and ok:
             env = self.configure_proxy(settings)
             ok = env.ok
             lines.extend(env.lines)
         clients = "agy" if targets and all(t.kind == "cli" for t in targets) else "используемый клиент"
-        title = ("Оригиналы восстановлены" if restore else "Готово — перезапустите " + clients) if ok else "Нужно ваше внимание"
+        title = ("Оригиналы восстановлены" if restore or recover else "Готово — перезапустите " + clients) if ok else "Нужно ваше внимание"
         return Outcome(title, lines or ["Нет файлов для изменения."], ok, changed)
 
     def configure_proxy(self, settings: Settings) -> Outcome:

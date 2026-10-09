@@ -157,3 +157,46 @@ class GuiTests(unittest.TestCase):
         self.window.settings.theme = 'light'
         self.window.apply_theme()
         self.assertEqual(self.window.colors['bg'], '#f4f5fa')
+
+    def test_individual_action_changes_only_selected_installation(self):
+        first, second = Path(self.tmp.name) / 'agy', Path(self.tmp.name) / 'language_server_test'
+        original = b'ineligible---https_proxy'
+        first.write_bytes(original)
+        second.write_bytes(original)
+        self.window.settings.manage_proxy = False
+        one = self.snapshot().items[0]
+        one.target = engine.Target(first, 'cli', 'agy')
+        two = self.snapshot().items[0]
+        two.target = engine.Target(second, 'language-server', 'IDE')
+        snapshot = Snapshot([one, two], [], None, False, 'absent', '12:00')
+        self.window.render(snapshot)
+        with patch.object(engine, 'running_clients', return_value=[]), patch.object(self.window.backend, 'scan', return_value=snapshot):
+            self.window.apply_one(one)
+            self.wait_job()
+        self.assertEqual(second.read_bytes(), original)
+        self.assertNotEqual(first.read_bytes(), original)
+
+    def test_setup_persists_proxy_and_completion(self):
+        self.window.render(self.snapshot())
+        self.window.open_setup()
+        wizard = self.window.setup_dialog
+        wizard.advance()
+        wizard.proxy.setText('http://127.0.0.1:8090')
+        wizard.advance()
+        self.assertEqual(wizard.pages.currentIndex(), 2)
+        wizard.advance()
+        settings = Settings.load(self.window.backend.directory)
+        self.assertTrue(settings.onboarding_done)
+        self.assertEqual(settings.proxy_url, 'http://127.0.0.1:8090')
+
+    def test_interrupted_state_offers_recovery_and_blocks_auto_patch(self):
+        snapshot = self.snapshot('interrupted')
+        snapshot.items[0].recoverable = True
+        self.window.render(snapshot)
+        self.assertIn('прерванная', self.window.hero_title.text())
+        self.assertFalse(self.window.apply_btn.isEnabled())
+        self.assertEqual(self.window.item_actions[0].text(), 'Восстановить после сбоя')
+        self.window.settings.auto_patch = True
+        with patch.object(self.window, 'apply_patch') as apply:
+            self.window.maybe_auto_patch(snapshot)
+        apply.assert_not_called()

@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ag-repatch"
-version = "2.0.2"
+version = "2.1.0"
 description = "Русское графическое приложение для восстановления патча Antigravity"
 readme = "README.ru.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = ["PySide6>=6.8,<7"]
+dependencies = ["PySide6>=6.8,<7", "requests>=2.32,<3"]
 
 [project.optional-dependencies]
 build = ["pyinstaller>=6.16,<7", "Pillow>=11,<13"]
