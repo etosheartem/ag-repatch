@@ -216,7 +216,9 @@ class BackupStore:
             latest = os.fstat(f.fileno())
             current_path = path.stat()
             signature = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
-            if signature(initial) != signature(latest) or signature(latest) != signature(current_path):
+            # CPython on Windows may expose change time in fstat() but birth time
+            # in stat(). Compare ctime only between results from the same API.
+            if signature(initial) != signature(latest) or signature(latest)[:-1] != signature(current_path)[:-1]:
                 raise ValueError("Файл изменился во время проверки. Повторите операцию.")
             try:
                 self._write_differences(f, before, after)

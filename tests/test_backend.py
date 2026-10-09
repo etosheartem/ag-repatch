@@ -35,6 +35,22 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), STOCK)
         self.assertEqual(self.path.stat().st_mode, mode)
 
+    def test_stat_and_fstat_may_report_different_ctime(self):
+        import os
+        from types import SimpleNamespace
+        real_fstat = os.fstat
+
+        def different_ctime(fd):
+            stat = real_fstat(fd)
+            return SimpleNamespace(st_dev=stat.st_dev, st_ino=stat.st_ino,
+                                   st_size=stat.st_size, st_mtime_ns=stat.st_mtime_ns,
+                                   st_ctime_ns=stat.st_ctime_ns + 1000000)
+
+        with patch('ag_repatch.backend.os.fstat', side_effect=different_ctime):
+            self.store.change(self.path)
+            self.store.change(self.path, restore=True)
+        self.assertEqual(self.path.read_bytes(), STOCK)
+
     def test_unknown_unchanged_no_backup(self):
         self.path.write_bytes(b'ineligible alone')
         with self.assertRaises(ValueError):

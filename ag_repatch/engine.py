@@ -568,5 +568,3 @@ def is_admin() -> bool:
         return os.geteuid() == 0
     except Exception:
         return False
-
-
