@@ -186,7 +186,9 @@ class LinuxIntegrationTests(unittest.TestCase):
             {'APPIMAGE': str(Path(tmp) / 'Мои приложения/ag-repatch.AppImage'), 'XDG_CONFIG_HOME': tmp, 'XDG_DATA_HOME': tmp}):
             startup.set_login_launch(True)
             content = (Path(tmp) / 'autostart/ag-repatch.desktop').read_text()
-            self.assertIn('Мои приложения/ag-repatch.AppImage', content)
+            self.assertIn('Мои приложения', content)
+            self.assertIn('ag-repatch.AppImage', content)
+            self.assertEqual(startup.launch_command(), [os.path.abspath(os.environ['APPIMAGE'])])
             self.assertIn('--background', content)
             self.assertNotIn('/tmp/.mount', content)
             entry = startup.install_linux_menu(b'icon')

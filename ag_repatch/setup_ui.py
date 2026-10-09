@@ -89,6 +89,8 @@ class SetupDialog(QDialog):
         updated.proxy_url = validate_proxy(self.proxy.text())
         updated.manage_proxy = self.manage.isChecked()
         updated.save(self.window.backend.directory)
+        if updated.proxy_url != self.window.settings.proxy_url:
+            self.window.clear_diagnosis()
         self.window.settings = updated
         self.window.proxy_input.setText(updated.proxy_url)
         self.window.manage_proxy.setChecked(updated.manage_proxy)
@@ -132,7 +134,10 @@ class SetupDialog(QDialog):
         self.next.setText('Завершить' if step == 2 else 'Далее')
         self.next.setEnabled(not w.busy and (step > 0 or bool(snapshot and snapshot.items)))
         self.apply.setEnabled(w.apply_btn.isEnabled())
+        self.apply.setText(w.apply_btn.text())
         self.summary.setText((w.notice.text() + '\n' if w.notice.text() else '') + w.hero_title.text() + '\n' + w.hero_text.text())
+        if not w.diagnostic_checks:
+            self.connection.setText("Проверка выполняет запросы к example.com и API Google через выбранный прокси.")
         if w.diagnostic_checks:
             self.connection.setText('\n'.join(('✓ ' if c.ok else '• ') + c.name + ': ' + c.detail for c in w.diagnostic_checks))
 

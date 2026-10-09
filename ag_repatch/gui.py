@@ -393,6 +393,10 @@ class MainWindow(QMainWindow):
         url = self.settings.proxy_url
         self.run_job(lambda: diagnose(url), self.diagnosis_finished, "ПРОВЕРЯЕМ ПОДКЛЮЧЕНИЕ")
 
+    def clear_diagnosis(self):
+        self.diagnostic_checks = []
+        self.diagnostics_view.setPlainText("Адрес прокси изменён. Запустите проверку для нового адреса.")
+
     def diagnosis_finished(self, checks):
         self.diagnostic_checks = checks
         text = "\n\n".join(("✓ " if c.ok else "• ") + c.name + "\n" + c.detail for c in checks)
@@ -719,6 +723,8 @@ class MainWindow(QMainWindow):
             self.settings_notice.setText(str(exc))
             self.append_log(str(exc))
             return
+        if updated.proxy_url != self.settings.proxy_url:
+            self.clear_diagnosis()
         self.settings = updated
         self._auto_attempted.clear()
         self.settings_notice.setText("Настройки сохранены. Адрес прокси будет применён кнопкой на экране обзора.")

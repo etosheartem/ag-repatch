@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import socket
 import tempfile
@@ -112,9 +113,11 @@ class BackupTests(unittest.TestCase):
             prepare(path, original, changed)
             path.write_bytes(b'updated' + original)
         with patch.object(self.store, 'prepare', side_effect=update):
-            with self.assertRaises(ValueError):
+            # Windows byte locks reject the competing writer itself; Unix
+            # advisory locks allow an uncooperative writer, detected by stat.
+            with self.assertRaises(PermissionError if os.name == 'nt' else ValueError):
                 self.store.change(self.path)
-        self.assertEqual(self.path.read_bytes(), b'updated' + STOCK)
+        self.assertEqual(self.path.read_bytes(), STOCK if os.name == 'nt' else b'updated' + STOCK)
 
     def test_restores_mixed_file_to_exact_previous_state(self):
         mixed = STOCK.replace(b'ineligible', b'inexigible')

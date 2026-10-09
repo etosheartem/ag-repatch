@@ -200,3 +200,12 @@ class GuiTests(unittest.TestCase):
         with patch.object(self.window, 'apply_patch') as apply:
             self.window.maybe_auto_patch(snapshot)
         apply.assert_not_called()
+
+    def test_changing_proxy_invalidates_previous_diagnosis(self):
+        from ag_repatch.diagnostics import Check
+        self.window.diagnostic_checks = [Check('Порт прокси', True, 'Соединение установлено.')]
+        self.window.proxy_input.setText('http://127.0.0.1:8091')
+        with patch.object(self.window, 'scan'):
+            self.window.save_settings()
+        self.assertEqual(self.window.diagnostic_checks, [])
+        self.assertIn('нового адреса', self.window.diagnostics_view.toPlainText())
