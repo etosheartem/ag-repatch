@@ -1,0 +1,13 @@
+ag-repatch — MIT (см. LICENSE).
+
+Графическое приложение использует Qt for Python / PySide6 и Shiboken6.
+Qt / PySide6: https://www.qt.io/licensing/ и https://code.qt.io/pyside/pyside-setup.git/
+Открытая версия распространяется на условиях LGPLv3 / GPLv3 (в зависимости от модуля).
+Используются QtCore, QtGui и QtWidgets и их зависимости.
+Тексты лицензий: https://www.gnu.org/licenses/lgpl-3.0.html
+                https://www.gnu.org/licenses/gpl-3.0.html
+Сборка не модифицирует исходники Qt / PySide6. Для замены библиотек можно собрать
+приложение из исходников с совместимой версией PySide6.
+
+Python: https://docs.python.org/3/license.html
+PyInstaller: https://pyinstaller.org/en/stable/license.html

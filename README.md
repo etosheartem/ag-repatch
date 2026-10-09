@@ -1,212 +1,107 @@
 <div align="center">
 
-# ⚡ ag-repatch
+# ag-repatch
 
-**Instant and safe region patch restorer for Google Antigravity**
+**Восстановление регионального патча Antigravity — в одном окне.**
 
-Single-file script with zero dependencies. Works seamlessly on Linux, macOS, and Windows.
+Русский интерфейс · Windows · macOS · Linux
 
-[![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20|%20macOS%20|%20Windows-555555?style=flat-square)](https://github.com/etosheartem/ag-repatch)
-[![Dependencies](https://img.shields.io/badge/Dependencies-Zero-2EA44F?style=flat-square)](#)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-
-**English** · [Русский](README.ru.md)
-
----
+[Скачать приложение](#скачать-приложение) · [Как пользоваться](#как-пользоваться) · [Скриншоты](#скриншоты)
 
 </div>
 
-```
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ ag-repatch  same-length rename patch for Antigravity                         │
-╰──────────────────────────────────────────────────────────────────────────────╯
+## Для чего это приложение
 
-Targets ───────────────────────────────────────────────────────────────────────
-› found 2 target(s)
-  Product          State    Path
-  Antigravity CLI  STOCK    /home/you/.local/bin/agy
-  Antigravity IDE  PATCHED  /opt/antigravity-ide/reso…anguage_server_linux_x64
+После обновления Antigravity ранее применённый региональный патч может исчезнуть: обновление заменяет изменённые файлы оригинальными. **ag-repatch находит установленные Antigravity IDE и CLI, показывает их состояние и позволяет повторно применить патч.**
 
-Patching ──────────────────────────────────────────────────────────────────────
-✓ patched, 8 spot(s) rewritten
-  • already patched, nothing to do
+В графическом приложении не нужно вводить команды. Вы видите, какие установки требуют изменений, доступен ли настроенный прокси и что делать дальше. Перед изменением файла сохраняется резервная копия.
 
-Environment ───────────────────────────────────────────────────────────────────
-✓ AG_LS_PROXY set to http://127.0.0.1:53129
-  • proxy service is running
+> Для работы нужен установленный Antigravity. Сам прокси в ag-repatch не входит: приложение настраивает подключение к уже установленному прокси. Совместимость патча зависит от версии Antigravity.
 
-Done ──────────────────────────────────────────────────────────────────────────
-  • restart Antigravity for this to take effect
-```
+## Скачать приложение
 
----
+**Пользователю не нужны Python, Git или сборка из исходников.** Достаточно скачать готовое приложение для своей системы.
 
-## 💡 The Problem
+### [Открыть страницу загрузок →](https://github.com/etosheartem/ag-repatch/releases)
 
-Google Antigravity's language server carries a region gate (`ineligible`). Once patched, the application periodically updates itself in the background, restores the stock binary, and silently revives the block.
+Выберите файл для своей системы по ссылкам ниже или откройте последний релиз и раздел **Assets**. GitHub Actions предназначен для сборки проекта разработчиками; пользователю переходить туда не потребуется.
 
-`ag-repatch` discovers all installed Antigravity components (both IDE and CLI) and re-applies the patch in **under a second**.
-
----
-
-## 📦 Prerequisites: Installing Python & Antigravity
-
-`ag-repatch` requires only standard Python 3.8+ and an Antigravity installation.
-
-<details open>
-<summary><b>🐧 Linux</b></summary>
-
-```bash
-# 1. Install Python 3
-sudo apt install python3         # Ubuntu / Debian
-sudo pacman -S python            # Arch Linux
-sudo dnf install python3         # Fedora / RHEL
-
-# 2. Install Antigravity
-# Antigravity CLI (agy):
-curl -fsSL https://antigravity.google/install.sh | bash
-
-# Antigravity IDE:
-# Download .deb / .rpm or tarball from https://antigravity.google
-# Arch Linux AUR:
-yay -S antigravity-ide-bin
-```
-</details>
-
-<details open>
-<summary><b>🍏 macOS</b></summary>
-
-```bash
-# 1. Install Python 3 (via Homebrew or python.org)
-brew install python
-
-# 2. Install Antigravity
-# Antigravity CLI:
-curl -fsSL https://antigravity.google/install.sh | bash
-
-# Antigravity IDE:
-brew install --cask antigravity
-# Or download .dmg from https://antigravity.google
-```
-</details>
-
-<details open>
-<summary><b>🪟 Windows</b></summary>
-
-```powershell
-# 1. Install Python 3 (via winget)
-winget install Python.Python.3.12
-# If using the python.org installer, make sure to check "Add python.exe to PATH"
-
-# 2. Install Antigravity
-# Via winget:
-winget install Google.Antigravity
-# Or download the installer from https://antigravity.google
-```
-</details>
-
----
-
-## 🚀 Quick Start
-
-### 1. Download
-
-```bash
-# Clone the repository:
-git clone https://github.com/etosheartem/ag-repatch
-cd ag-repatch
-
-# Or download the single script directly into PATH:
-curl -sSL https://raw.githubusercontent.com/etosheartem/ag-repatch/main/ag-repatch.py -o ~/.local/bin/ag-repatch
-chmod +x ~/.local/bin/ag-repatch
-```
-
-### 2. Run
-
-```bash
-# Safe inspection (read-only, checks binary status):
-./ag-repatch.py --check
-
-# Apply the patch:
-./ag-repatch.py
-```
-> **Windows**: run with `py ag-repatch.py --check` and `py ag-repatch.py`.
-
----
-
-## ⚙️ How It Works
-
-Two surgical, in-place string replacements are applied to the binary:
-
-| Stock | Patched | Purpose |
+| Система | Файл для скачивания | Как запустить |
 |---|---|---|
-| `ineligible` | `inexigible` | Protobuf descriptor field checked by the client (**main patch**) |
-| `https_proxy` | `AG_LS_PROXY` | Isolated proxy environment variable (**routes through unlocker**) |
+| Windows x64 | [Скачать `.exe`](https://github.com/etosheartem/ag-repatch/releases/latest/download/ag-repatch-windows-x64.exe) | Скачайте и откройте файл |
+| macOS, Apple Silicon (M1 и новее) | [Скачать `.dmg` для Apple Silicon](https://github.com/etosheartem/ag-repatch/releases/latest/download/ag-repatch-macos-arm64.dmg) | Откройте образ и перенесите приложение в «Программы» |
+| macOS, Intel | [Скачать `.dmg` для Intel](https://github.com/etosheartem/ag-repatch/releases/latest/download/ag-repatch-macos-x64.dmg) | Откройте образ и перенесите приложение в «Программы» |
 
-### 🛡️ Safety Guarantees:
-- **Same-length renames**: offsets, relocations, and executable layout remain untouched. The file size does not change by even a single byte.
-- **Surgical seek-writes**: full file scan before writing, followed by targeted seek-writes at matched offsets (no risky multi-hundred MB rewrites).
-- **Refuses to guess**: if signatures are missing or partially matched, the file is left completely byte-identical.
-- **Completely standalone**: zero network access, no background daemons, no telemetry.
+Windows-приложение переносимое, отдельный установщик не требуется. Если включаете автозапуск, храните приложение в постоянной папке. На Mac тип процессора указан в меню Apple → «Об этом Mac».
 
----
+Сборки по умолчанию не имеют доверенной подписи издателя и нотариализации Apple.
 
-## 🎛️ CLI Options
+## Скриншоты
 
-```text
-ag-repatch [PATH ...]          patch discovered targets and optional paths
+### Главное окно — тёмная тема
 
-  --check                      report status without writing changes
-  --lang ru|en                 force UI language
-  --plain, --no-color          ASCII only, disable colors and animations
-  -y, --yes                    skip confirmation prompt
-  --no-env                     patch only; leave AG_LS_PROXY untouched
-  --unset                      remove AG_LS_PROXY from the environment
-  --selftest                   run internal integrity test suite
-```
+Состояние каждой установки, отдельная проверка прокси и основные действия на одном экране.
 
-### Exit Codes:
-| Code | Meaning |
-|:---:|---|
-| `0` | Success / everything is patched and up to date |
-| `1` | Access error (file is locked or insufficient permissions) |
-| `2` | No Antigravity installation found |
-| `3` | `--selftest` assertion failure |
-
----
-
-## 🔍 Under the Hood
+![Главное окно: установки Antigravity, состояние прокси и кнопка применения патча](docs/screenshots/overview-dark.png)
 
 <details>
-<summary><b>📂 Binary Search Paths</b></summary>
+<summary><strong>Светлая тема</strong></summary>
 
-- **Linux**: `~/.local/bin/agy`, `~/.agy/bin/agy`, `~/.local/share/agy/bin/agy`, and `resources/bin/language_server*` + `resources/app/extensions/antigravity/bin/language_server*` under `/opt/antigravity*`, `/usr/share/antigravity*`, `~/.local/share/antigravity*`.
-- **macOS**: search paths inside `/Applications/Antigravity*.app/Contents/Resources` and `~/Applications/...`, plus `agy` in `~/.local/bin`, `/usr/local/bin`, `/opt/homebrew/bin`.
-- **Windows**: `%LOCALAPPDATA%\Programs\Antigravity`, `%LOCALAPPDATA%\Programs\Antigravity IDE`, `%LOCALAPPDATA%\agy`, and matching paths under `%PROGRAMFILES%` / `%PROGRAMFILES(X86)%`.
-- *Note*: Snap installations are skipped intentionally because snapd mounts them on a read-only squashfs.
+Можно выбрать светлое, тёмное оформление или следовать теме системы.
+
+![Главное окно ag-repatch в светлой теме](docs/screenshots/overview-light.png)
+
 </details>
 
 <details>
-<summary><b>🌐 AG_LS_PROXY Environment Integration</b></summary>
+<summary><strong>Настройки приложения</strong></summary>
 
-Sets `AG_LS_PROXY=http://127.0.0.1:53129` (the unlocker's loopback proxy) without polluting system-wide `HTTPS_PROXY`:
-- **Linux**: writes to `~/.config/environment.d/ag-unlocker.conf` (for future sessions) and executes `systemctl --user set-environment` (for running sessions).
-- **macOS**: runs `launchctl setenv` and registers `~/Library/LaunchAgents/ag-unlocker-env.plist`.
-- **Windows**: writes to `HKCU\Environment` via the registry and broadcasts `WM_SETTINGCHANGE`.
+Адрес прокси, автоматическая проверка, автопатч и запуск при входе в систему.
+
+![Настройки ag-repatch: прокси и автоматическая проверка](docs/screenshots/settings.png)
+
 </details>
 
-<details>
-<summary><b>🧪 Integrity Self-Tests (--selftest)</b></summary>
+Это снимки работающего интерфейса с демонстрационными данными. Список установок и их состояние на вашем компьютере будут отличаться.
 
-```bash
-./ag-repatch.py --selftest
-```
-Runs 7 independent assertion checks verifying file length invariance, idempotency, byte-for-byte exactness, dry-run safety, and edge-offset handling.
-</details>
+## Что умеет ag-repatch
 
----
+| Возможность | Что это даёт |
+|---|---|
+| Поиск IDE и CLI | Находит стандартные установки; недостающую можно добавить вручную |
+| Применение патча | Изменяет нужные участки распознанного файла, сохраняя его размер |
+| Резервные копии | Сохраняет файлы перед патчем и позволяет вернуть прежнее состояние |
+| Защита отката | Не подменяет обновлённую версию старой копией: проверяет совпадение хеша |
+| Настройка прокси | Сохраняет адрес отдельно от глобального `HTTPS_PROXY` и проверяет доступность порта |
+| Автоматизация | По вашему выбору проверяет обновления и повторно применяет патч |
+| Журнал | Показывает подробности операций и позволяет скопировать их для разбора ошибки |
+| Русский интерфейс | Светлая и тёмная темы, локализованные диалоги, ссылка на репозиторий в боковой панели |
 
-## 📄 License
+## Как пользоваться
 
-Released under the [MIT License](LICENSE).
+1. **Откройте ag-repatch.** Приложение само проверит установленные IDE и CLI.
+2. **Закройте Antigravity**, если требуется применить патч, затем нажмите «Проверить снова».
+3. **Нажмите «Применить патч».** Приложение сохранит предыдущую версию файлов и проверит результат записи.
+4. **Проверьте блок прокси и перезапустите Antigravity.** Состояние патча и состояние подключения отображаются отдельно.
+
+Если установка не нашлась, нажмите **«Добавить установку»** и выберите папку приложения или исполняемый файл. Для отмены изменений используйте **«Восстановить оригиналы»** — кнопка доступна, когда есть подходящая резервная копия.
+
+По умолчанию используется прокси `http://127.0.0.1:53129`. Другой адрес можно указать в настройках. «Порт доступен» означает, что к нему удалось подключиться; это не проверка работы сервиса Google.
+
+### Работа в фоне
+
+Автопроверка выполняется раз в минуту, пока запущен ag-repatch. **Автопатч и запуск при входе в систему по умолчанию выключены** — их можно включить в настройках. Если Antigravity открыт, автоматическое применение патча откладывается.
+
+При включённой автопроверке закрытие окна оставляет приложение в области уведомлений, если она доступна. Для полного выхода выберите «Завершить работу» в меню значка.
+
+## Консольная версия и подробности
+
+Консольный интерфейс сохранён: `python ag-repatch.py --check --lang ru` проверяет состояние без изменений. CLI использует стандартную библиотеку Python 3.8+; рядом со скриптом должна находиться папка `ag_repatch`.
+
+Параметры CLI, устройство патча и хранение резервных копий описаны в **[подробной инструкции](README.ru.md)**.
+
+Разработчикам: [запуск из исходников](README.ru.md#запуск-из-исходников), [сборка и выпуск версии](README.ru.md#сборка-exe-и-app), [тесты](README.ru.md#проверки).
+
+## Лицензия
+
+[MIT](LICENSE). Сведения о сторонних библиотеках — [THIRD_PARTY.txt](packaging/THIRD_PARTY.txt).
