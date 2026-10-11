@@ -7,8 +7,29 @@ root = Path(SPECPATH).parent
 mac = sys.platform == 'darwin'
 win = sys.platform == 'win32'
 translations = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
+
+
+def linux_xcb_libraries():
+    # The Qt xcb platform plugin links these, but PyInstaller silently skips a
+    # dependency that is missing on the build machine, and many desktops and
+    # minimal images do not ship them. Bundle them explicitly so the AppImage
+    # starts without extra system packages.
+    names = ['libxcb-icccm.so.4', 'libxcb-keysyms.so.1', 'libxcb-shape.so.0']
+    dirs = [Path('/usr/lib/x86_64-linux-gnu'), Path('/lib/x86_64-linux-gnu'),
+            Path('/usr/lib64'), Path('/usr/lib')]
+    found = []
+    for name in names:
+        path = next((d / name for d in dirs if (d / name).exists()), None)
+        if path is None:
+            raise SystemExit(f'{name} не найдена: установите libxcb-icccm4, '
+                             'libxcb-keysyms1 и libxcb-shape0 перед сборкой')
+        found.append((str(path), '.'))  # keep the soname as the bundled file name
+    return found
+
+
 a = Analysis(
     [str(root / 'ag-repatch-gui.py')], pathex=[str(root)],
+    binaries=linux_xcb_libraries() if sys.platform.startswith('linux') else [],
     datas=[(str(translations / 'qtbase_ru.qm'), 'translations'),
            (str(root / 'LICENSE'), '.'), (str(root / 'packaging/THIRD_PARTY.txt'), '.')],
     hiddenimports=[], excludes=['tkinter'],
