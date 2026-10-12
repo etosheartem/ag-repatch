@@ -28,7 +28,8 @@ def build_linux(build, png):
     launcher.chmod(0o755)
     (stage / "ag-repatch.desktop").write_text(
         "[Desktop Entry]\nType=Application\nName=ag-repatch\n"
-        "Comment=Восстановление патча Antigravity IDE и agy\n"
+        "Comment=Restore the Antigravity IDE and agy patch\n"
+        "Comment[ru]=Восстановление патча Antigravity IDE и agy\n"
         "Exec=ag-repatch\nIcon=ag-repatch\nTerminal=false\nCategories=Development;Utility;\n",
         encoding="utf-8")
     shutil.copy2(png, stage / "ag-repatch.png")

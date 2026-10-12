@@ -1,4 +1,5 @@
 """Three-step first-run guide using the same operations as the main window."""
+from .i18n import tr
 import copy
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QStackedWidget, QWidget, QCheckBox
@@ -9,7 +10,7 @@ class SetupDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window = window
-        self.setWindowTitle('Первый запуск — ag-repatch')
+        self.setWindowTitle(tr('Первый запуск — ag-repatch'))
         self.resize(650, 430)
         layout = QVBoxLayout(self)
         self.heading = QLabel()
@@ -19,14 +20,14 @@ class SetupDialog(QDialog):
         layout.addWidget(self.pages, 1)
         page = QWidget()
         body = QVBoxLayout(page)
-        info = QLabel('Установите самостоятельный agy для Gemini в терминале или Antigravity IDE.\nДля agy установка IDE не требуется.')
+        info = QLabel(tr('Установите самостоятельный agy для Gemini в терминале или Antigravity IDE.\nДля agy установка IDE не требуется.'))
         info.setWordWrap(True)
         body.addWidget(info)
         self.found = QLabel()
         self.found.setWordWrap(True)
         body.addWidget(self.found)
-        for text, callback in [('Выбрать файл agy', window.add_file), ('Выбрать папку IDE', window.add_directory),
-                               ('Проверить установки', window.scan), ('Инструкция установки agy', window.open_agy_docs)]:
+        for text, callback in [(tr('Выбрать файл agy'), window.add_file), (tr('Выбрать папку IDE'), window.add_directory),
+                               (tr('Проверить установки'), window.scan), (tr('Инструкция установки agy'), window.open_agy_docs)]:
             b = QPushButton(text)
             b.clicked.connect(callback)
             body.addWidget(b)
@@ -34,19 +35,19 @@ class SetupDialog(QDialog):
         self.pages.addWidget(page)
         page = QWidget()
         body = QVBoxLayout(page)
-        self.manage = QCheckBox('Настроить подключение через мой прокси')
+        self.manage = QCheckBox(tr('Настроить подключение через мой прокси'))
         self.manage.setChecked(window.settings.manage_proxy)
         body.addWidget(self.manage)
         self.proxy = QLineEdit(window.settings.proxy_url)
-        self.proxy.setAccessibleName('Адрес прокси')
+        self.proxy.setAccessibleName(tr('Адрес прокси'))
         body.addWidget(self.proxy)
-        hint = QLabel('Укажите уже работающий прокси. Приложение не устанавливает его.\nЕсли подключение настроено другим способом, снимите флажок.')
+        hint = QLabel(tr('Укажите уже работающий прокси. Приложение не устанавливает его.\nЕсли подключение настроено другим способом, снимите флажок.'))
         hint.setWordWrap(True)
         body.addWidget(hint)
-        check = QPushButton('Проверить подключение')
+        check = QPushButton(tr('Проверить подключение'))
         check.clicked.connect(self.diagnose)
         body.addWidget(check)
-        self.connection = QLabel('Проверка выполняет запросы к example.com и API Google через выбранный прокси.')
+        self.connection = QLabel(tr('Проверка выполняет запросы к example.com и API Google через выбранный прокси.'))
         self.connection.setWordWrap(True)
         body.addWidget(self.connection)
         body.addStretch()
@@ -56,7 +57,7 @@ class SetupDialog(QDialog):
         self.summary = QLabel()
         self.summary.setWordWrap(True)
         body.addWidget(self.summary)
-        self.apply = QPushButton('Применить патч')
+        self.apply = QPushButton(tr('Применить патч'))
         self.apply.clicked.connect(window.apply_patch)
         body.addWidget(self.apply)
         body.addStretch()
@@ -65,14 +66,14 @@ class SetupDialog(QDialog):
         self.error.setWordWrap(True)
         layout.addWidget(self.error)
         row = QHBoxLayout()
-        later = QPushButton('Продолжить позже')
+        later = QPushButton(tr('Продолжить позже'))
         later.clicked.connect(self.reject)
         row.addWidget(later)
         row.addStretch()
-        self.back = QPushButton('Назад')
+        self.back = QPushButton(tr('Назад'))
         self.back.clicked.connect(lambda: self.pages.setCurrentIndex(self.pages.currentIndex()-1))
         row.addWidget(self.back)
-        self.next = QPushButton('Далее')
+        self.next = QPushButton(tr('Далее'))
         self.next.clicked.connect(self.advance)
         row.addWidget(self.next)
         layout.addLayout(row)
@@ -127,17 +128,17 @@ class SetupDialog(QDialog):
     def refresh(self):
         w = self.window
         step = self.pages.currentIndex()
-        self.heading.setText(['Шаг 1 из 3 · Найдите установку', 'Шаг 2 из 3 · Настройте подключение', 'Шаг 3 из 3 · Примените патч'][step])
+        self.heading.setText([tr('Шаг 1 из 3 · Найдите установку'), tr('Шаг 2 из 3 · Настройте подключение'), tr('Шаг 3 из 3 · Примените патч')][step])
         snapshot = w.snapshot
-        self.found.setText(f'Найдено установок: {len(snapshot.items)}' if snapshot else 'Ищем установки…')
+        self.found.setText(tr('Найдено установок: {0}').format(len(snapshot.items)) if snapshot else tr('Ищем установки…'))
         self.back.setEnabled(step > 0 and not w.busy)
-        self.next.setText('Завершить' if step == 2 else 'Далее')
+        self.next.setText(tr('Завершить') if step == 2 else tr('Далее'))
         self.next.setEnabled(not w.busy and (step > 0 or bool(snapshot and snapshot.items)))
         self.apply.setEnabled(w.apply_btn.isEnabled())
         self.apply.setText(w.apply_btn.text())
         self.summary.setText((w.notice.text() + '\n' if w.notice.text() else '') + w.hero_title.text() + '\n' + w.hero_text.text())
         if not w.diagnostic_checks:
-            self.connection.setText("Проверка выполняет запросы к example.com и API Google через выбранный прокси.")
+            self.connection.setText(tr("Проверка выполняет запросы к example.com и API Google через выбранный прокси."))
         if w.diagnostic_checks:
             self.connection.setText('\n'.join(('✓ ' if c.ok else '• ') + c.name + ': ' + c.detail for c in w.diagnostic_checks))
 

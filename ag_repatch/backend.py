@@ -1,6 +1,7 @@
 """GUI-independent operations. No Qt dependency; all mutations are explicit."""
 from __future__ import annotations
 
+from .i18n import tr
 import hashlib
 import json
 import os
@@ -57,12 +58,12 @@ def installation_version(path):
                 pass
         if re.fullmatch(r"v?\d+\.\d+\.\d+[\w.+-]*", parent.name):
             return parent.name
-    return "Не определена"
+    return tr("Не определена")
 
 
 def validate_proxy(url: str) -> str:
     if not isinstance(url, str):
-        raise ValueError("Адрес прокси должен быть строкой.")
+        raise ValueError(tr("Адрес прокси должен быть строкой."))
     url = url.strip()
     try:
         p = urlsplit(url)
@@ -73,7 +74,7 @@ def validate_proxy(url: str) -> str:
         if port is not None and not 1 <= port <= 65535:
             raise ValueError
     except ValueError:
-        raise ValueError("Введите адрес вида http://127.0.0.1:53129, без логина и пароля.") from None
+        raise ValueError(tr("Введите адрес вида http://127.0.0.1:53129, без логина и пароля.")) from None
     return url.rstrip("/")
 
 
@@ -95,14 +96,14 @@ class Settings:
             return cls()
         data = json.loads(path.read_text("utf-8"))
         if not isinstance(data, dict):
-            raise ValueError("Файл настроек повреждён.")
+            raise ValueError(tr("Файл настроек повреждён."))
         values = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         for key in ("manage_proxy", "auto_check", "auto_patch", "start_at_login", "onboarding_done"):
             if key in values and type(values[key]) is not bool:
-                raise ValueError("Некорректная настройка: " + key)
+                raise ValueError(tr("Некорректная настройка: ") + key)
         if "extra_paths" in values and (not isinstance(values["extra_paths"], list)
                                         or not all(isinstance(x, str) for x in values["extra_paths"])):
-            raise ValueError("Некорректный список путей.")
+            raise ValueError(tr("Некорректный список путей."))
         result = cls(**values)
         result.proxy_url = validate_proxy(result.proxy_url)
         if result.theme not in ("system", "light", "dark"):
@@ -120,7 +121,7 @@ class Item:
     state: str
     restorable: bool = False
     writable: bool = False
-    version: str = "Не определена"
+    version: str = field(default_factory=lambda: tr("Не определена"))
     backup_date: str = ""
     recoverable: bool = False
 
@@ -251,7 +252,7 @@ class BackupStore:
                     end += 1
                 f.seek(start + pos)
                 if f.write(b[pos:end]) != end - pos:
-                    raise OSError("Не удалось полностью записать изменения.")
+                    raise OSError(tr("Не удалось полностью записать изменения."))
                 pos = end
         f.flush()
         os.fsync(f.fileno())
@@ -266,18 +267,18 @@ class BackupStore:
             if restore or recover:
                 after = self.recovery_original(path, before) if recover else self.original(path, before)
                 if after is None:
-                    raise ValueError("Нет подходящей копии: файл обновился или был изменён. Откат отменён.")
+                    raise ValueError(tr("Нет подходящей копии: файл обновился или был изменён. Откат отменён."))
             else:
                 scan = engine._scan(before)
                 if scan is None:
-                    raise ValueError("Версия не распознана. Файл оставлен без изменений.")
+                    raise ValueError(tr("Версия не распознана. Файл оставлен без изменений."))
                 after = before
                 for old, new in engine.PAIRS:
                     if len(old) != len(new):
-                        raise ValueError("Некорректная длина замены.")
+                        raise ValueError(tr("Некорректная длина замены."))
                     after = after.replace(old, new)
                 if after == before:
-                    return "Уже пропатчен"
+                    return tr("Уже пропатчен")
                 self.prepare(path, before, after)
             latest = os.fstat(f.fileno())
             current_path = path.stat()
@@ -285,19 +286,19 @@ class BackupStore:
             # CPython on Windows may expose change time in fstat() but birth time
             # in stat(). Compare ctime only between results from the same API.
             if signature(initial) != signature(latest) or signature(latest)[:-1] != signature(current_path)[:-1]:
-                raise ValueError("Файл изменился во время проверки. Повторите операцию.")
+                raise ValueError(tr("Файл изменился во время проверки. Повторите операцию."))
             try:
                 self._write_differences(f, before, after)
                 f.seek(0)
                 if digest(f.read()) != digest(after):
-                    raise OSError("Проверка записанного файла не пройдена.")
+                    raise OSError(tr("Проверка записанного файла не пройдена."))
             except OSError as exc:
                 try:
                     self._write_differences(f, after, before)
                 except OSError:
-                    raise OSError("Запись и откат не завершены. Оригинал сохранён в папке резервных копий.") from exc
+                    raise OSError(tr("Запись и откат не завершены. Оригинал сохранён в папке резервных копий.")) from exc
                 raise
-        return "Оригинал восстановлен" if restore or recover else "Патч применён, оригинал сохранён"
+        return tr("Оригинал восстановлен") if restore or recover else tr("Патч применён, оригинал сохранён")
 
 
 class Backend:
@@ -348,7 +349,7 @@ class Backend:
     def apply(self, settings: Settings, targets: list[engine.Target], restore: bool = False, recover: bool = False, privileged: bool = False) -> Outcome:
         busy = engine.running_clients()
         if busy:
-            return Outcome("Сначала закройте запущенные клиенты", ["Открыты процессы: " + ", ".join(busy)], False)
+            return Outcome(tr("Сначала закройте запущенные клиенты"), [tr("Открыты процессы: ") + ", ".join(busy)], False)
         lines, ok, changed = [], True, False
         for target in targets:
             try:
@@ -357,11 +358,11 @@ class Backend:
                     result = apply_with_permission(self.backups, target.path, restore, recover)
                 else:
                     result = self.backups.change(target.path, restore, recover)
-                changed = changed or result != "Уже пропатчен"
+                changed = changed or result != tr("Уже пропатчен")
                 lines.append(str(target.path) + "\n" + result)
             except PermissionError:
                 ok = False
-                lines.append(str(target.path) + "\nНет прав на запись. Нужны права администратора или доступ к папке установки.")
+                lines.append(str(target.path) + tr("\nНет прав на запись. Нужны права администратора или доступ к папке установки."))
             except (OSError, ValueError) as exc:
                 ok = False
                 lines.append(str(target.path) + "\n" + str(exc))
@@ -370,27 +371,27 @@ class Backend:
             env = self.configure_proxy(settings)
             ok = env.ok
             lines.extend(env.lines)
-        clients = "agy" if targets and all(t.kind == "cli" for t in targets) else "используемый клиент"
-        title = ("Оригиналы восстановлены" if restore or recover else "Готово — перезапустите " + clients) if ok else "Нужно ваше внимание"
-        return Outcome(title, lines or ["Нет файлов для изменения."], ok, changed)
+        clients = "agy" if targets and all(t.kind == "cli" for t in targets) else tr("используемый клиент")
+        title = (tr("Оригиналы восстановлены") if restore or recover else tr("Готово — перезапустите ") + clients) if ok else tr("Нужно ваше внимание")
+        return Outcome(title, lines or [tr("Нет файлов для изменения.")], ok, changed)
 
     def configure_proxy(self, settings: Settings) -> Outcome:
         url = validate_proxy(settings.proxy_url)
         result = engine.proxy_env_apply(url)
         ok = result in ("applied", "already")
-        lines = ["Прокси настроен: " + url if ok else "Не удалось обновить окружение: " + result]
+        lines = [tr("Прокси настроен: ") + url if ok else tr("Не удалось обновить окружение: ") + result]
         # The bundled unlocker service is only relevant to its original address.
         if ok and url == engine.PROXY_URL:
             service = engine.service_start()
             if service.startswith("error:"):
                 ok = False
-                lines.append("Не удалось запустить службу прокси: " + service[6:])
+                lines.append(tr("Не удалось запустить службу прокси: ") + service[6:])
             elif service == "absent":
-                lines.append("Служба прокси не установлена. Приложение не устанавливает сам прокси.")
-        return Outcome("Настройка прокси" if ok else "Нужно ваше внимание", lines, ok)
+                lines.append(tr("Служба прокси не установлена. Приложение не устанавливает сам прокси."))
+        return Outcome(tr("Настройка прокси") if ok else tr("Нужно ваше внимание"), lines, ok)
 
     def clear_proxy(self) -> Outcome:
         result = engine.proxy_env_clear()
         ok = result in ("applied", "already")
-        return Outcome("Настройка прокси удалена" if ok else "Не удалось удалить настройку",
-                       ["Бинарники не изменялись." if ok else result], ok)
+        return Outcome(tr("Настройка прокси удалена") if ok else tr("Не удалось удалить настройку"),
+                       [tr("Бинарники не изменялись.") if ok else result], ok)

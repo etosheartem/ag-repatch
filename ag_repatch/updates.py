@@ -1,4 +1,5 @@
 """Official release discovery and verified downloads. No silent replacement."""
+from .i18n import tr
 from dataclasses import dataclass
 import hashlib
 import os
@@ -18,7 +19,7 @@ API = 'https://api.github.com/repos/etosheartem/ag-repatch/releases/latest'
 
 def version_tuple(value):
     if not re.fullmatch(r'v?\d+\.\d+\.\d+', value):
-        raise ValueError('Не удалось распознать номер стабильного релиза.')
+        raise ValueError(tr('Не удалось распознать номер стабильного релиза.'))
     return tuple(map(int, value.removeprefix('v').split('.')))
 
 
@@ -27,12 +28,12 @@ def asset_name():
     if sys.platform == 'darwin':
         return 'ag-repatch-macos-' + ('arm64' if arch in ('arm64', 'aarch64') else 'x64') + '.dmg'
     if arch not in ('amd64', 'x86_64'):
-        raise ValueError('Для этой архитектуры пока нет готового обновления.')
+        raise ValueError(tr('Для этой архитектуры пока нет готового обновления.'))
     if sys.platform == 'win32':
         return 'ag-repatch-windows-x64.exe'
     if sys.platform == 'linux':
         return 'ag-repatch-linux-x64.AppImage' if os.environ.get('APPIMAGE') else 'ag-repatch-linux-x64.tar.gz'
-    raise ValueError('Для этой системы нет готового обновления.')
+    raise ValueError(tr('Для этой системы нет готового обновления.'))
 
 
 @dataclass(frozen=True)
@@ -58,27 +59,27 @@ def check_release():
     tag = data['tag_name']
     version_tuple(tag)
     if data.get('draft') or data.get('prerelease'):
-        raise ValueError('Ожидался опубликованный стабильный релиз.')
+        raise ValueError(tr('Ожидался опубликованный стабильный релиз.'))
     name = asset_name()
     for asset in data['assets']:
         if asset['name'] == name:
             expected = REPOSITORY_URL + '/releases/download/' + tag + '/' + name
             checksum = asset.get('digest', '') or ''
             if asset['browser_download_url'] != expected or not re.fullmatch(r'sha256:[a-f0-9]{64}', checksum):
-                raise ValueError('Не удалось проверить источник или контрольную сумму обновления.')
+                raise ValueError(tr('Не удалось проверить источник или контрольную сумму обновления.'))
             size = asset['size']
             if not isinstance(size, int) or not 0 < size <= 512 * 1024 * 1024:
-                raise ValueError('Некорректный размер обновления.')
+                raise ValueError(tr('Некорректный размер обновления.'))
             return Release(tag, (data.get('body') or '')[:12000], name, expected, checksum[7:], size)
-    raise ValueError('В релизе нет файла для вашей системы.')
+    raise ValueError(tr('В релизе нет файла для вашей системы.'))
 
 
 def download_release(release, directory):
     if release.url != REPOSITORY_URL + '/releases/download/' + release.version + '/' + release.name:
-        raise ValueError('Неверный источник обновления.')
+        raise ValueError(tr('Неверный источник обновления.'))
     version_tuple(release.version)
     if release.name != asset_name() or not re.fullmatch('[a-f0-9]{64}', release.sha256):
-        raise ValueError('Неверный файл обновления.')
+        raise ValueError(tr('Неверный файл обновления.'))
     directory = Path(directory) / release.version
     directory.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix='.download-', dir=directory)
@@ -92,13 +93,13 @@ def download_release(release, directory):
                 for chunk in response.iter_content(256 * 1024):
                     total += len(chunk)
                     if total > release.size or time.monotonic() > deadline:
-                        raise ValueError('Превышен размер файла или время загрузки.')
+                        raise ValueError(tr('Превышен размер файла или время загрузки.'))
                     output.write(chunk)
                     checksum.update(chunk)
             output.flush()
             os.fsync(output.fileno())
         if total != release.size or checksum.hexdigest() != release.sha256:
-            raise ValueError('Контрольная сумма не совпала. Загруженный файл удалён.')
+            raise ValueError(tr('Контрольная сумма не совпала. Загруженный файл удалён.'))
         if target.suffix == '.AppImage':
             Path(temporary).chmod(0o755)
         os.replace(temporary, target)
@@ -115,7 +116,7 @@ def verify_download(path, release):
             total += len(block)
             checksum.update(block)
     if total != release.size or checksum.hexdigest() != release.sha256:
-        raise ValueError('Файл изменён после загрузки. Скачайте обновление ещё раз.')
+        raise ValueError(tr('Файл изменён после загрузки. Скачайте обновление ещё раз.'))
 
 
 def extract_linux_archive(path, destination):
@@ -129,31 +130,31 @@ def extract_linux_archive(path, destination):
         for member in archive:
             parts = Path(member.name).parts
             if not parts or parts[0] != 'ag-repatch' or '..' in parts or Path(member.name).is_absolute():
-                raise ValueError('Архив содержит недопустимый путь.')
+                raise ValueError(tr('Архив содержит недопустимый путь.'))
             target = destination.joinpath(*parts)
             if not target.resolve().is_relative_to(destination):
-                raise ValueError('Архив содержит ссылку за пределы приложения.')
+                raise ValueError(tr('Архив содержит ссылку за пределы приложения.'))
             if member.isdir():
                 target.mkdir(parents=True, exist_ok=True)
             elif member.issym():
                 link = Path(member.linkname)
                 if link.is_absolute() or not (target.parent / link).resolve().is_relative_to(destination):
-                    raise ValueError('Архив содержит недопустимую ссылку.')
+                    raise ValueError(tr('Архив содержит недопустимую ссылку.'))
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.symlink_to(member.linkname)
             elif member.isfile():
                 total += member.size
                 if total > 1024 * 1024 * 1024:
-                    raise ValueError('Распакованный архив слишком большой.')
+                    raise ValueError(tr('Распакованный архив слишком большой.'))
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with archive.extractfile(member) as source, target.open('xb') as output:
                     shutil.copyfileobj(source, output)
                 target.chmod(member.mode & 0o755)
             else:
-                raise ValueError('Архив содержит неподдерживаемый тип файла.')
+                raise ValueError(tr('Архив содержит неподдерживаемый тип файла.'))
     executable = destination / 'ag-repatch/ag-repatch'
     if not executable.is_file() or not os.access(executable, os.X_OK):
-        raise ValueError('В архиве не найдено исполняемое приложение.')
+        raise ValueError(tr('В архиве не найдено исполняемое приложение.'))
     return executable
 
 
@@ -184,7 +185,7 @@ def install_update(path, release, mac_destination=None):
                 plistlib.loads(result.stdout)  # Reject malformed tool output.
                 source = mount / 'ag-repatch.app'
                 if not (source / 'Contents/MacOS/ag-repatch').is_file():
-                    raise ValueError('В образе не найдено приложение ag-repatch.')
+                    raise ValueError(tr('В образе не найдено приложение ag-repatch.'))
                 staged = Path(staging) / 'ag-repatch.app'
                 shutil.copytree(source, staged, symlinks=True)
             finally:

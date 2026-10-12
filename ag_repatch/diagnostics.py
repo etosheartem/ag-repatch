@@ -1,4 +1,5 @@
 """Explicit network checks and a privacy-preserving support report."""
+from .i18n import tr
 from dataclasses import dataclass
 import json
 import platform
@@ -26,32 +27,32 @@ def diagnose(proxy_url):
         with socket.create_connection((proxy.hostname, proxy.port or (443 if proxy.scheme == 'https' else 80)), timeout=4):
             pass
     except OSError:
-        return [Check('Порт прокси', False, 'Нет соединения. Запустите прокси и проверьте адрес и порт в настройках.')]
-    checks.append(Check('Порт прокси', True, 'Соединение установлено.'))
+        return [Check(tr('Порт прокси'), False, tr('Нет соединения. Запустите прокси и проверьте адрес и порт в настройках.'))]
+    checks.append(Check(tr('Порт прокси'), True, tr('Соединение установлено.')))
     with requests.Session() as session:
         # Never use NO_PROXY or .netrc: each check must traverse this proxy.
         session.trust_env = False
         session.proxies = {'http': proxy_url, 'https': proxy_url}
-        for name, url in [('HTTPS через прокси', 'https://example.com/'),
-                          ('Сервис Google', 'https://generativelanguage.googleapis.com/')]:
+        for name, url in [(tr('HTTPS через прокси'), 'https://example.com/'),
+                          (tr('Сервис Google'), 'https://generativelanguage.googleapis.com/')]:
             try:
                 with session.get(url, timeout=(5, 8), allow_redirects=False, stream=True) as response:
                     code = response.status_code
-                if name == 'Сервис Google' and code in (401, 404):
-                    checks.append(Check(name, True, f'Сервер ответил (HTTP {code}). Доступ к моделям и авторизация не проверялись.'))
+                if name == tr('Сервис Google') and code in (401, 404):
+                    checks.append(Check(name, True, tr('Сервер ответил (HTTP {0}). Доступ к моделям и авторизация не проверялись.').format(code)))
                 elif 200 <= code < 400:
-                    checks.append(Check(name, True, f'Получен ответ HTTP {code}.'))
+                    checks.append(Check(name, True, tr('Получен ответ HTTP {0}.').format(code)))
                 else:
-                    hint = 'Прокси требует авторизации.' if code == 407 else 'Проверьте маршрут прокси; сервер отказал или временно недоступен.'
+                    hint = tr('Прокси требует авторизации.') if code == 407 else tr('Проверьте маршрут прокси; сервер отказал или временно недоступен.')
                     checks.append(Check(name, False, f'HTTP {code}. {hint}'))
             except requests.exceptions.SSLError:
-                checks.append(Check(name, False, 'Ошибка сертификата TLS. Проверьте дату системы и настройки прокси.'))
+                checks.append(Check(name, False, tr('Ошибка сертификата TLS. Проверьте дату системы и настройки прокси.')))
             except requests.exceptions.ProxyError:
-                checks.append(Check(name, False, 'Прокси не смог создать HTTPS-туннель. Проверьте его настройки и авторизацию.'))
+                checks.append(Check(name, False, tr('Прокси не смог создать HTTPS-туннель. Проверьте его настройки и авторизацию.')))
             except requests.exceptions.Timeout:
-                checks.append(Check(name, False, 'Время ожидания истекло. Проверьте подключение и маршрут прокси.'))
+                checks.append(Check(name, False, tr('Время ожидания истекло. Проверьте подключение и маршрут прокси.')))
             except requests.RequestException:
-                checks.append(Check(name, False, 'Соединение прервано. Проверьте прокси и повторите проверку.'))
+                checks.append(Check(name, False, tr('Соединение прервано. Проверьте прокси и повторите проверку.')))
     return checks
 
 
@@ -61,7 +62,7 @@ def support_report(snapshot, checks):
     data = {'приложение': __version__, 'система': platform.system(),
             'версия_системы': platform.release(), 'архитектура': platform.machine(),
             'установки': [], 'проверки': [{'этап': c.name, 'успешно': c.ok, 'результат': c.detail} for c in checks],
-            'примечание': 'Личные пути, адрес прокси и полный журнал исключены. Отчёт никуда не отправляется.'}
+            'примечание': tr('Личные пути, адрес прокси и полный журнал исключены. Отчёт никуда не отправляется.')}
     if snapshot:
         data['установки'] = [{'тип': i.target.kind, 'состояние': i.state,
                             'можно_восстановить': i.restorable, 'запись_доступна': i.writable,
