@@ -11,14 +11,16 @@ from PySide6.QtTest import QTest
 from ag_repatch.backend import Item, Settings, Snapshot
 from ag_repatch.engine import Target
 from ag_repatch.gui import MainWindow
+from ag_repatch.i18n import set_language
 
 app = QApplication([])
 app.setStyle('Fusion')
+set_language('ru_RU')
 window = MainWindow(settings=Settings(theme='dark'), start_scan=False)
 window.render(Snapshot([
     Item(Target(Path('/Applications/Antigravity.app/Contents/Resources/resources/bin/language_server_macos_arm'), 'language-server', 'Antigravity IDE'), 'stock', False, True),
     Item(Target(Path('/Users/artem/.local/bin/agy'), 'cli', 'Antigravity CLI'), 'patched', True, True),
-], [], 'http://127.0.0.1:53129', True, 'running', '14:32'))
+], [], None, False, 'unused', '14:32'))
 window.show()
 dest = ROOT / 'docs/screenshots'
 dest.mkdir(parents=True, exist_ok=True)
@@ -40,19 +42,24 @@ window.grab().save(str(ROOT / 'build/preview-small.png'))
 window.resize(1100, 800)
 window.render(Snapshot([
     Item(Target(Path('/Users/artem/.local/bin/agy'), 'cli', 'Antigravity CLI'), 'stock', False, True),
-], [], 'http://127.0.0.1:53129', True, 'running', '14:32'))
+], [], None, False, 'unused', '14:32'))
 QTest.qWait(50)
 window.grab().save(str(dest / 'agy-only.png'))
 from ag_repatch.diagnostics import Check
 window.diagnosis_finished([
-    Check('Порт прокси', True, 'Соединение установлено.'),
-    Check('HTTPS через прокси', True, 'Получен ответ HTTP 200.'),
+    Check('HTTPS через VPN или напрямую', True, 'Получен ответ HTTP 200.'),
     Check('Сервис Google', True, 'Сервер ответил (HTTP 404). Доступ к моделям и авторизация не проверялись.'),
 ])
 window.navigate(3)
 QTest.qWait(50)
 window.grab().save(str(dest / 'diagnostics.png'))
 window.open_setup()
+window.setup_dialog.pages.setCurrentIndex(1)
+window.setup_dialog.refresh()
 QTest.qWait(50)
 window.setup_dialog.grab().save(str(dest / 'setup.png'))
 window.setup_dialog.reject()
+window.navigate(5)
+QTest.qWait(50)
+window.grab().save(str(dest / 'help.png'))
+window.timer.stop()

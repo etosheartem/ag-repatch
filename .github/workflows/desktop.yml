@@ -54,9 +54,10 @@ jobs:
             dist/ag-repatch.exe --smoke-test
           elif [ "$RUNNER_OS" = "Linux" ]; then
             python packaging/check_bundle.py dist/ag-repatch
-            dist/ag-repatch-linux-x64.AppImage --appimage-extract-and-run --smoke-test
+            LC_ALL=C dist/ag-repatch-linux-x64.AppImage --appimage-extract-and-run --smoke-test
+            LC_ALL=ru_RU.UTF-8 dist/ag-repatch-linux-x64.AppImage --appimage-extract-and-run --smoke-test
             # The offscreen check above does not load the xcb plugin a desktop uses.
-            QT_QPA_PLATFORM=xcb xvfb-run -a dist/ag-repatch-linux-x64.AppImage --appimage-extract-and-run --smoke-test
+            LC_ALL=C QT_QPA_PLATFORM=xcb xvfb-run -a dist/ag-repatch-linux-x64.AppImage --appimage-extract-and-run --smoke-test
             mkdir -p build/archive-check
             tar -xzf dist/ag-repatch-linux-x64.tar.gz -C build/archive-check
             build/archive-check/ag-repatch/ag-repatch --smoke-test
@@ -103,6 +104,15 @@ jobs:
         run: |
           cat > release-notes.txt <<'NOTES'
           Готовые приложения ag-repatch. Установка Python и сборка из исходников не нужны.
+
+          Новое в 2.1.2:
+          - Новый раздел «Помощь» объясняет патч, VPN и отдельный прокси.
+          - Для новых установок отдельный прокси выключен; настройки существующих
+            пользователей сохраняются. Недоступный адрес прокси не применяется.
+          - Диагностика учитывает выбранное подключение и ранее сохранённый прокси.
+          - Интерфейс и мастер первого запуска используют русский язык при русской
+            системной локали и английский для остальных локалей, включая C.
+          - Linux: проверяем запуск собранного приложения на обоих языках.
 
           Исправлено в 2.1.1:
           - Linux: AppImage и архив больше не закрываются сразу после запуска на системах

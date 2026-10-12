@@ -1,6 +1,7 @@
 """Opt-in per-user login launch. Does not install a privileged service."""
 from __future__ import annotations
 
+from .i18n import tr
 import os
 import pathlib
 import plistlib
@@ -48,7 +49,7 @@ def set_login_launch(enabled: bool) -> None:
         else:
             path.unlink(missing_ok=True)
     elif enabled:
-        raise ValueError("Эта система не поддерживает автозапуск.")
+        raise ValueError(tr("Эта система не поддерживает автозапуск."))
 
 
 def elevate_windows() -> bool:
@@ -68,14 +69,15 @@ def elevate_windows() -> bool:
 def desktop_entry(command, icon="ag-repatch"):
     def quote(value):
         if any(c in value for c in "\n\r\0"):
-            raise ValueError("Путь содержит недопустимые символы.")
+            raise ValueError(tr("Путь содержит недопустимые символы."))
         value = value.replace("%", "%%")
         for char in ('\\', '"', '`', '$'):
             value = value.replace(char, '\\' + char)
         # Desktop Entry string decoding precedes Exec decoding.
         return '"' + value.replace('\\', '\\\\') + '"'
     return ("[Desktop Entry]\nType=Application\nName=ag-repatch\n"
-            "Comment=Antigravity IDE и Gemini через agy\nTerminal=false\n"
+            "Comment=Antigravity IDE and Gemini via agy\n"
+            "Comment[ru]=Antigravity IDE и Gemini через agy\nTerminal=false\n"
             "Categories=Utility;\nExec=" + " ".join(quote(x) for x in command)
             + "\nIcon=" + icon + "\n")
 

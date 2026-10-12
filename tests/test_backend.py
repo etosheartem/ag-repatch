@@ -196,7 +196,58 @@ class BackendTests(unittest.TestCase):
     def test_service_failure_reported(self):
         with patch.object(engine, 'proxy_env_apply', return_value='applied'), \
              patch.object(engine, 'service_start', return_value='error:failed'):
-            self.assertFalse(self.backend.configure_proxy(Settings()).ok)
+            self.assertFalse(self.backend.configure_proxy(Settings(proxy_url=engine.PROXY_URL, manage_proxy=True)).ok)
+
+    def test_new_settings_do_not_configure_a_proxy(self):
+        settings = Settings()
+        self.assertFalse(settings.manage_proxy)
+        self.assertEqual(settings.proxy_url, '')
+        settings.save(self.backend.directory)
+        self.assertFalse(Settings.load(self.backend.directory).manage_proxy)
+        with patch.object(engine, 'running_clients', return_value=[]), \
+             patch.object(engine, 'proxy_env_apply') as apply, patch.object(engine, 'service_start') as service:
+            self.assertTrue(self.backend.apply(settings, [self.target]).ok)
+        apply.assert_not_called()
+        service.assert_not_called()
+
+    def test_existing_proxy_preference_is_preserved(self):
+        settings = Settings(proxy_url=engine.PROXY_URL, manage_proxy=True)
+        settings.save(self.backend.directory)
+        loaded = Settings.load(self.backend.directory)
+        self.assertTrue(loaded.manage_proxy)
+        self.assertEqual(loaded.proxy_url, engine.PROXY_URL)
+
+    def test_scan_without_proxy_skips_proxy_port(self):
+        with patch.object(engine, 'find_targets', return_value=[]), \
+             patch.object(engine, 'running_clients', return_value=[]), \
+             patch.object(engine, 'proxy_env_read', return_value=None), \
+             patch.object(engine, 'service_status') as service, patch('socket.create_connection') as connect:
+            snapshot = self.backend.scan(Settings())
+        connect.assert_not_called()
+        service.assert_not_called()
+        self.assertIsNone(snapshot.proxy_env)
+
+    def test_scan_uses_saved_proxy_when_management_is_disabled(self):
+        with patch.object(engine, 'find_targets', return_value=[]), \
+             patch.object(engine, 'running_clients', return_value=[]), \
+             patch.object(engine, 'proxy_env_read', return_value='http://127.0.0.1:8181'), \
+             patch('socket.create_connection') as connect:
+            snapshot = self.backend.scan(Settings())
+        connect.assert_called_once_with(('127.0.0.1', 8181), timeout=1)
+        self.assertTrue(snapshot.proxy_reachable)
+
+    def test_unreachable_proxy_is_not_saved(self):
+        with patch('socket.create_connection', side_effect=OSError), \
+             patch.object(engine, 'proxy_env_apply') as apply:
+            result = self.backend.configure_proxy(Settings(proxy_url='http://127.0.0.1:8181', manage_proxy=True))
+        self.assertFalse(result.ok)
+        apply.assert_not_called()
+
+    def test_reachable_proxy_is_saved(self):
+        with patch('socket.create_connection'), patch.object(engine, 'proxy_env_apply', return_value='applied') as apply:
+            result = self.backend.configure_proxy(Settings(proxy_url='http://127.0.0.1:8181', manage_proxy=True))
+        self.assertTrue(result.ok)
+        apply.assert_called_once_with('http://127.0.0.1:8181')
 
     def test_windows_service_does_not_depend_on_ui_language(self):
         with patch.object(engine, '_IS_MAC', False), patch.object(engine, '_IS_WIN', True), \

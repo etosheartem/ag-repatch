@@ -97,6 +97,19 @@ class RecoveryTests(unittest.TestCase):
 
 
 class NetworkTests(unittest.TestCase):
+    def test_vpn_mode_uses_direct_requests_without_environment_proxies(self):
+        session = MagicMock()
+        session.get.return_value.__enter__.return_value.status_code = 200
+        with patch('socket.create_connection') as connect, patch('requests.Session') as factory:
+            factory.return_value.__enter__.return_value = session
+            checks = diagnose()
+        connect.assert_not_called()
+        self.assertEqual(session.proxies, {})
+        self.assertFalse(session.trust_env)
+        self.assertEqual(session.get.call_count, 2)
+        self.assertTrue(all(c.ok for c in checks))
+        self.assertIn('VPN', checks[0].name)
+
     def test_closed_proxy_stops_without_direct_fallback(self):
         with patch('socket.create_connection', side_effect=OSError), patch('requests.Session') as session:
             checks = diagnose('http://127.0.0.1:1234')

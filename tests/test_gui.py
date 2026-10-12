@@ -181,6 +181,7 @@ class GuiTests(unittest.TestCase):
         self.window.open_setup()
         wizard = self.window.setup_dialog
         wizard.advance()
+        wizard.manage.setChecked(True)
         wizard.proxy.setText('http://127.0.0.1:8090')
         wizard.advance()
         self.assertEqual(wizard.pages.currentIndex(), 2)
@@ -208,4 +209,50 @@ class GuiTests(unittest.TestCase):
         with patch.object(self.window, 'scan'):
             self.window.save_settings()
         self.assertEqual(self.window.diagnostic_checks, [])
-        self.assertIn('нового адреса', self.window.diagnostics_view.toPlainText())
+        self.assertIn('подключения изменены', self.window.diagnostics_view.toPlainText())
+
+    def test_vpn_mode_does_not_show_false_connection_failure(self):
+        self.window.render(Snapshot([], [], None, False, 'unused', '12:00'))
+        self.assertEqual(self.window.connection_title.text(), 'VPN или прямое подключение')
+        self.assertEqual(self.window.proxy_badge.text(), 'Без отдельного прокси')
+        self.assertFalse(self.window.connection_clear_btn.isVisible())
+
+    def test_saved_proxy_is_visible_even_when_management_is_disabled(self):
+        self.window.render(Snapshot([], [], 'http://127.0.0.1:8181', False, 'unused', '12:00'))
+        self.assertEqual(self.window.connection_title.text(), 'Сохранён прежний прокси')
+        self.assertIn('8181', self.window.proxy_detail.text())
+        self.assertTrue(self.window.connection_clear_btn.isVisible())
+
+    def test_diagnostics_follow_the_selected_or_saved_route(self):
+        from ag_repatch.diagnostics import Check
+        for manage, saved, expected in [(False, None, None), (False, 'http://localhost:8181', 'http://localhost:8181'),
+                                         (True, 'http://localhost:8181', 'http://localhost:8182')]:
+            self.window.settings.manage_proxy = manage
+            self.window.settings.proxy_url = 'http://localhost:8182'
+            with patch.object(engine, 'proxy_env_read', return_value=saved), \
+                 patch('ag_repatch.diagnostics.diagnose', return_value=[Check('test', True, 'ok')]) as diagnose:
+                self.window.diagnose_connection()
+                self.wait_job()
+            diagnose.assert_called_once_with(expected)
+
+    def test_changing_connection_mode_clears_previous_results(self):
+        from ag_repatch.diagnostics import Check
+        self.window.settings.proxy_url = 'http://localhost:8182'
+        self.window.proxy_input.setText('http://localhost:8182')
+        self.window.diagnostic_checks = [Check('old', True, 'ok')]
+        self.window.manage_proxy.setChecked(True)
+        with patch.object(self.window, 'scan'):
+            self.window.save_settings()
+        self.assertEqual(self.window.diagnostic_checks, [])
+
+    def test_setup_can_continue_without_a_proxy_address(self):
+        self.window.render(Snapshot([], [], None, False, 'unused', '12:00'))
+        self.window.open_setup()
+        wizard = self.window.setup_dialog
+        wizard.pages.setCurrentIndex(1)
+        self.assertFalse(wizard.manage.isChecked())
+        self.assertFalse(wizard.proxy.isEnabled())
+        wizard.advance()
+        self.assertEqual(wizard.pages.currentIndex(), 2)
+        wizard.advance()
+        self.assertFalse(Settings.load(self.window.backend.directory).manage_proxy)
