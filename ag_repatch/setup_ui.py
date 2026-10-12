@@ -3,7 +3,6 @@ from .i18n import tr
 import copy
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QStackedWidget, QWidget, QCheckBox
-from .backend import validate_proxy
 
 
 class SetupDialog(QDialog):
@@ -11,7 +10,7 @@ class SetupDialog(QDialog):
         super().__init__(window)
         self.window = window
         self.setWindowTitle(tr('Первый запуск — ag-repatch'))
-        self.resize(650, 430)
+        self.resize(680, 540)
         layout = QVBoxLayout(self)
         self.heading = QLabel()
         self.heading.setWordWrap(True)
@@ -35,19 +34,31 @@ class SetupDialog(QDialog):
         self.pages.addWidget(page)
         page = QWidget()
         body = QVBoxLayout(page)
-        self.manage = QCheckBox(tr('Настроить подключение через мой прокси'))
+        hint = QLabel(tr('Если VPN работает для IDE и agy или доступ есть напрямую, оставьте отдельный прокси выключенным. VPN только в браузере обычно не действует на IDE и терминал.'))
+        hint.setWordWrap(True)
+        body.addWidget(hint)
+        self.manage = QCheckBox(tr('Использовать отдельный HTTP-прокси'))
         self.manage.setChecked(window.settings.manage_proxy)
         body.addWidget(self.manage)
         self.proxy = QLineEdit(window.settings.proxy_url)
         self.proxy.setAccessibleName(tr('Адрес прокси'))
+        self.proxy.setPlaceholderText('http://127.0.0.1:53129')
+        self.proxy.setEnabled(window.settings.manage_proxy)
+        self.manage.toggled.connect(self.proxy.setEnabled)
         body.addWidget(self.proxy)
-        hint = QLabel(tr('Укажите уже работающий прокси. Приложение не устанавливает его.\nЕсли подключение настроено другим способом, снимите флажок.'))
+        hint = QLabel(tr('Адрес и порт возьмите из своего прокси-клиента. Указанный в поле адрес — только пример. ag-repatch не устанавливает VPN или прокси.'))
         hint.setWordWrap(True)
         body.addWidget(hint)
         check = QPushButton(tr('Проверить подключение'))
         check.clicked.connect(self.diagnose)
         body.addWidget(check)
-        self.connection = QLabel(tr('Проверка выполняет запросы к example.com и API Google через выбранный прокси.'))
+        self.saved_proxy_notice = QLabel()
+        self.saved_proxy_notice.setWordWrap(True)
+        body.addWidget(self.saved_proxy_notice)
+        self.clear_proxy = QPushButton(tr('Убрать сохранённый прокси'))
+        self.clear_proxy.clicked.connect(self.clear_saved_proxy)
+        body.addWidget(self.clear_proxy)
+        self.connection = QLabel(tr('Проверка выполняет запросы к example.com и API Google через выбранное подключение.'))
         self.connection.setWordWrap(True)
         body.addWidget(self.connection)
         body.addStretch()
@@ -87,14 +98,16 @@ class SetupDialog(QDialog):
 
     def save_proxy(self):
         updated = copy.deepcopy(self.window.settings)
-        updated.proxy_url = validate_proxy(self.proxy.text())
+        updated.proxy_url = self.proxy.text()
         updated.manage_proxy = self.manage.isChecked()
         updated.save(self.window.backend.directory)
-        if updated.proxy_url != self.window.settings.proxy_url:
+        if (updated.proxy_url, updated.manage_proxy) != (self.window.settings.proxy_url, self.window.settings.manage_proxy):
             self.window.clear_diagnosis()
         self.window.settings = updated
         self.window.proxy_input.setText(updated.proxy_url)
         self.window.manage_proxy.setChecked(updated.manage_proxy)
+        if self.window.snapshot:
+            self.window.render(self.window.snapshot)
 
     def diagnose(self):
         if self.window.busy:
@@ -104,6 +117,10 @@ class SetupDialog(QDialog):
             self.window.diagnose_connection()
         except (OSError, ValueError) as exc:
             self.error.setText(str(exc))
+
+    def clear_saved_proxy(self):
+        self.window.clear_proxy()
+        self.manage.setChecked(self.window.settings.manage_proxy)
 
     def advance(self):
         if self.window.busy:
@@ -136,9 +153,16 @@ class SetupDialog(QDialog):
         self.next.setEnabled(not w.busy and (step > 0 or bool(snapshot and snapshot.items)))
         self.apply.setEnabled(w.apply_btn.isEnabled())
         self.apply.setText(w.apply_btn.text())
+        self.manage.setEnabled(not w.busy)
+        self.proxy.setEnabled(self.manage.isChecked() and not w.busy)
+        saved_proxy = bool(snapshot and snapshot.proxy_env)
+        self.saved_proxy_notice.setText(tr('Для IDE/agy ещё сохранён прежний прокси. Для работы только через VPN уберите его и перезапустите IDE и терминал.') if saved_proxy else '')
+        self.saved_proxy_notice.setVisible(saved_proxy)
+        self.clear_proxy.setVisible(saved_proxy)
+        self.clear_proxy.setEnabled(not w.busy)
         self.summary.setText((w.notice.text() + '\n' if w.notice.text() else '') + w.hero_title.text() + '\n' + w.hero_text.text())
         if not w.diagnostic_checks:
-            self.connection.setText(tr("Проверка выполняет запросы к example.com и API Google через выбранный прокси."))
+            self.connection.setText(tr("Проверка выполняет запросы к example.com и API Google через выбранное подключение."))
         if w.diagnostic_checks:
             self.connection.setText('\n'.join(('✓ ' if c.ok else '• ') + c.name + ': ' + c.detail for c in w.diagnostic_checks))
 

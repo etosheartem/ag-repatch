@@ -41,7 +41,7 @@ class LanguageTests(unittest.TestCase):
             setup = SetupDialog(window)
             try:
                 self.assertEqual([button.text() for button in window.nav],
-                                 ["Overview", "Settings", "Log", "Diagnostics", "Updates"])
+                                 ["Overview", "Settings", "Log", "Diagnostics", "Updates", "Help"])
                 window.render(Snapshot([], [], None, False, "absent", "12:00"))
                 self.assertEqual(window.hero_title.text(), "No installations found")
                 for state in ("stock", "patched", "interrupted", "unreadable", "no-signature"):

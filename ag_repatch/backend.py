@@ -80,8 +80,8 @@ def validate_proxy(url: str) -> str:
 
 @dataclass
 class Settings:
-    proxy_url: str = engine.PROXY_URL
-    manage_proxy: bool = True
+    proxy_url: str = ""
+    manage_proxy: bool = False
     auto_check: bool = True
     auto_patch: bool = False
     start_at_login: bool = False
@@ -105,14 +105,25 @@ class Settings:
                                         or not all(isinstance(x, str) for x in values["extra_paths"])):
             raise ValueError(tr("Некорректный список путей."))
         result = cls(**values)
-        result.proxy_url = validate_proxy(result.proxy_url)
+        result.validate_connection()
         if result.theme not in ("system", "light", "dark"):
             result.theme = "system"
         return result
 
     def save(self, directory: pathlib.Path) -> None:
-        self.proxy_url = validate_proxy(self.proxy_url)
+        self.validate_connection()
         atomic_write(directory / "settings.json", json.dumps(asdict(self), ensure_ascii=False, indent=2).encode())
+
+    def validate_connection(self) -> None:
+        if self.manage_proxy:
+            self.proxy_url = validate_proxy(self.proxy_url)
+        elif not isinstance(self.proxy_url, str):
+            self.proxy_url = ""
+
+
+def connection_proxy(settings: Settings, saved_proxy: str | None) -> str | None:
+    """Disabling proxy management does not remove an existing client setting."""
+    return settings.proxy_url if settings.manage_proxy else saved_proxy or None
 
 
 @dataclass
@@ -336,15 +347,19 @@ class Backend:
                                   installation_version(target.path), self.backups.backup_date(target.path), cached[2]))
             except OSError:
                 items.append(Item(target, "unreadable"))
+        saved_proxy = engine.proxy_env_read()
+        url = connection_proxy(settings, saved_proxy)
         reachable = False
-        p = urlsplit(validate_proxy(settings.proxy_url))
-        try:
-            with socket.create_connection((p.hostname, p.port or (443 if p.scheme == "https" else 80)), timeout=1):
-                reachable = True
-        except OSError:
-            pass
-        return Snapshot(items, engine.running_clients(), engine.proxy_env_read(), reachable,
-                        engine.service_status(), datetime.now().strftime("%H:%M"))
+        if url:
+            try:
+                p = urlsplit(validate_proxy(url))
+                with socket.create_connection((p.hostname, p.port or (443 if p.scheme == "https" else 80)), timeout=1):
+                    reachable = True
+            except (OSError, ValueError):
+                pass
+        service = engine.service_status() if url == engine.PROXY_URL else "unused"
+        return Snapshot(items, engine.running_clients(), saved_proxy, reachable,
+                        service, datetime.now().strftime("%H:%M"))
 
     def apply(self, settings: Settings, targets: list[engine.Target], restore: bool = False, recover: bool = False, privileged: bool = False) -> Outcome:
         busy = engine.running_clients()
@@ -377,17 +392,21 @@ class Backend:
 
     def configure_proxy(self, settings: Settings) -> Outcome:
         url = validate_proxy(settings.proxy_url)
+        # The bundled unlocker service is only relevant to its original address.
+        if url == engine.PROXY_URL:
+            service = engine.service_start()
+            if service.startswith("error:"):
+                return Outcome(tr("Не удалось настроить прокси"), [tr("Не удалось запустить службу прокси: ") + service[6:]], False)
+        p = urlsplit(url)
+        try:
+            with socket.create_connection((p.hostname, p.port or (443 if p.scheme == "https" else 80)), timeout=2):
+                pass
+        except OSError:
+            return Outcome(tr("Прокси недоступен — адрес не применён"),
+                           [tr("Запустите прокси-клиент и проверьте адрес. Если используете VPN, выключите отдельный прокси в настройках. Уже применённый патч остаётся на месте.")], False)
         result = engine.proxy_env_apply(url)
         ok = result in ("applied", "already")
         lines = [tr("Прокси настроен: ") + url if ok else tr("Не удалось обновить окружение: ") + result]
-        # The bundled unlocker service is only relevant to its original address.
-        if ok and url == engine.PROXY_URL:
-            service = engine.service_start()
-            if service.startswith("error:"):
-                ok = False
-                lines.append(tr("Не удалось запустить службу прокси: ") + service[6:])
-            elif service == "absent":
-                lines.append(tr("Служба прокси не установлена. Приложение не устанавливает сам прокси."))
         return Outcome(tr("Настройка прокси") if ok else tr("Нужно ваше внимание"), lines, ok)
 
     def clear_proxy(self) -> Outcome:

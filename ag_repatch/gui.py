@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import REPOSITORY_URL, __version__, engine
-from .backend import Backend, Outcome, Settings, Snapshot, data_directory
+from .backend import Backend, Outcome, Settings, Snapshot, connection_proxy, data_directory
 from .startup import elevate_windows, set_login_launch
 
 
@@ -165,7 +165,7 @@ class MainWindow(QMainWindow):
         side.addWidget(label("Antigravity IDE · agy", "muted"))
         side.addSpacing(38)
         self.nav = []
-        for index, text in enumerate((tr("Обзор"), tr("Настройки"), tr("Журнал"), tr("Диагностика"), tr("Обновления"))):
+        for index, text in enumerate((tr("Обзор"), tr("Настройки"), tr("Журнал"), tr("Диагностика"), tr("Обновления"), tr("Помощь"))):
             b = button(text, lambda checked=False, i=index: self.navigate(i), "nav")
             b.setCheckable(True)
             b.setMinimumHeight(46)
@@ -187,6 +187,7 @@ class MainWindow(QMainWindow):
         self.build_log()
         self.build_diagnostics()
         self.build_updates()
+        self.build_help()
         self.navigate(0)
 
     def page(self, title, description):
@@ -242,7 +243,8 @@ class MainWindow(QMainWindow):
         pl = QVBoxLayout(proxy)
         pl.setContentsMargins(18, 14, 18, 14)
         pr = QHBoxLayout()
-        pr.addWidget(label(tr("Подключение через прокси"), "sectionTitle"))
+        self.connection_title = label(tr("Подключение"), "sectionTitle")
+        pr.addWidget(self.connection_title)
         pr.addStretch()
         self.proxy_badge = label(tr("Проверяем…"), "badge")
         pr.addWidget(self.proxy_badge)
@@ -250,6 +252,10 @@ class MainWindow(QMainWindow):
         self.proxy_detail = label("", "muted", True)
         pl.addWidget(self.proxy_detail)
         pl.addWidget(button(tr("Диагностика подключения"), lambda: self.navigate(3), "link"))
+        self.connection_clear_btn = button(tr("Убрать сохранённый прокси"), self.clear_proxy, "link")
+        self.connection_clear_btn.hide()
+        pl.addWidget(self.connection_clear_btn)
+        pl.addWidget(button(tr("VPN и прокси: что выбрать?"), lambda: self.navigate(5), "link"))
         layout.addWidget(proxy)
         self.notice = label("", "notice", True)
         self.notice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -283,15 +289,21 @@ class MainWindow(QMainWindow):
         proxy = card()
         p = QVBoxLayout(proxy)
         p.setContentsMargins(20, 18, 20, 18)
-        p.addWidget(label(tr("Прокси"), "sectionTitle"))
-        self.manage_proxy = QCheckBox(tr("Настраивать прокси при применении патча"))
+        p.addWidget(label(tr("Подключение IDE и agy"), "sectionTitle"))
+        p.addWidget(label(tr("Если VPN уже работает для IDE и agy или доступ есть напрямую, отдельный прокси не нужен. Оставьте флажок выключенным."), "muted", True))
+        self.manage_proxy = QCheckBox(tr("Использовать отдельный HTTP-прокси"))
         self.manage_proxy.setChecked(self.settings.manage_proxy)
         p.addWidget(self.manage_proxy)
         self.proxy_input = QLineEdit(self.settings.proxy_url)
         self.proxy_input.setAccessibleName(tr("Адрес прокси"))
+        self.proxy_input.setPlaceholderText("http://127.0.0.1:53129")
+        self.proxy_input.setEnabled(self.settings.manage_proxy)
+        self.manage_proxy.toggled.connect(self.proxy_input.setEnabled)
         p.addWidget(self.proxy_input)
-        p.addWidget(label(tr("Укажите адрес уже установленного прокси. Сам прокси в приложение не входит."), "muted", True))
-        self.clear_btn = button(tr("Удалить настройку прокси из системы"), self.clear_proxy, "link")
+        p.addWidget(label(tr("Адрес возьмите из настроек работающего прокси-клиента. 127.0.0.1 — ваш компьютер; порт 53129 приведён только как пример. Поддерживаются HTTP/HTTPS-прокси без логина и пароля; SOCKS здесь не поддерживается."), "muted", True))
+        p.addWidget(label(tr("Выключение флажка не удаляет ранее сохранённый прокси. Для перехода только на VPN удалите его кнопкой ниже и перезапустите IDE и терминал."), "muted", True))
+        p.addWidget(button(tr("VPN и прокси: что выбрать?"), lambda: self.navigate(5), "link"))
+        self.clear_btn = button(tr("Убрать сохранённый прокси"), self.clear_proxy, "link")
         p.addWidget(self.clear_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         content.addWidget(proxy)
         auto = card()
@@ -352,7 +364,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(row)
 
     def build_diagnostics(self):
-        layout = self.page(tr("Диагностика"), tr("Проверим подключение через прокси из сохранённых настроек. Авторизация и доступ к конкретным моделям не проверяются."))
+        layout = self.page(tr("Диагностика"), tr("Проверка связи через выбранный прокси или обычное подключение компьютера, включая системный VPN. Вход в аккаунт и доступ к моделям проверяйте в IDE или agy."))
+        self.diagnostics_route = label("", "muted", True)
+        layout.addWidget(self.diagnostics_route)
         layout.addWidget(label(tr("По кнопке ниже отправляются HTTPS-запросы к example.com и generativelanguage.googleapis.com. Учётные данные не используются."), "muted", True))
         self.diagnostics_view = QTextEdit()
         self.diagnostics_view.setReadOnly(True)
@@ -378,6 +392,33 @@ class MainWindow(QMainWindow):
         layout.addLayout(row)
         layout.addWidget(label(tr("Файл проверяется по SHA-256 из GitHub Releases. На Windows и Linux новая версия сохраняется в папке данных приложения; на macOS — в вашей папке «Программы». Старая версия остаётся доступной."), "muted", True))
 
+    def build_help(self):
+        layout = self.page(tr("Помощь"), tr("Начните с подключения, затем примените патч и перезапустите IDE или agy."))
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        body = QWidget()
+        content = QVBoxLayout(body)
+        content.setContentsMargins(0, 0, 0, 0)
+        sections = [
+            (tr("Что делает ag-repatch"), tr("Восстанавливает локальный патч в файлах Antigravity IDE или отдельного agy после обновления. Перед изменением сохраняет оригинал. Приложение не устанавливает VPN, прокси или сам Antigravity и не меняет ваш внешний IP.")),
+            (tr("У меня уже есть VPN"), tr("Если системный VPN или режим TUN проводит трафик IDE и agy, оставьте «Использовать отдельный HTTP-прокси» выключенным. При выборочной маршрутизации проверьте, что нужные приложения включены. Расширение VPN только в браузере обычно не помогает IDE и терминалу. Если VPN-клиент работает только в режиме «системный прокси», укажите его HTTP-адрес здесь или включите режим VPN/TUN.")),
+            (tr("Когда нужен отдельный прокси"), tr("Когда вы используете работающий HTTP-прокси для подключения IDE или agy. Включите флажок в настройках и скопируйте адрес и порт из своего прокси-клиента. Случайный адрес не создаёт прокси. Если доступа нет ни напрямую, ни через VPN, ни через прокси, один патч сеть не исправит.")),
+            (tr("Как начать"), tr("1. Установите Antigravity IDE или отдельный agy.\n2. Выберите подключение в настройках ag-repatch.\n3. Закройте IDE и сеансы agy, нажмите «Применить патч».\n4. Откройте новый терминал или перезапустите IDE, войдите в аккаунт и проверьте работу.")),
+            (tr("Перехожу с прокси на VPN"), tr("Выключите отдельный прокси, сохраните настройки и нажмите «Убрать сохранённый прокси». Затем перезапустите IDE и терминал; при необходимости выйдите из системы и войдите снова. Уже запущенные процессы могут сохранять старый адрес.")),
+            (tr("Что означают проверки"), tr("«Патч установлен» относится только к файлам. «Порт доступен» означает, что прокси принимает соединение. Успешная диагностика подтверждает связь с тестовыми адресами, но не авторизацию, доступ к модели или маршрут другого приложения при раздельной настройке VPN.")),
+        ]
+        for title, text in sections:
+            panel = card()
+            section = QVBoxLayout(panel)
+            section.setContentsMargins(18, 14, 18, 14)
+            section.addWidget(label(title, "sectionTitle", True))
+            section.addWidget(label(text, "muted", True))
+            content.addWidget(panel)
+        content.addStretch()
+        scroll.setWidget(body)
+        layout.addWidget(scroll, 1)
+
     def open_setup(self):
         from .setup_ui import SetupDialog
         if getattr(self, "setup_dialog", None) and self.setup_dialog.isVisible():
@@ -391,12 +432,13 @@ class MainWindow(QMainWindow):
 
     def diagnose_connection(self):
         from .diagnostics import diagnose
-        url = self.settings.proxy_url
-        self.run_job(lambda: diagnose(url), self.diagnosis_finished, tr("ПРОВЕРЯЕМ ПОДКЛЮЧЕНИЕ"))
+        settings = copy.deepcopy(self.settings)
+        self.run_job(lambda: diagnose(connection_proxy(settings, engine.proxy_env_read())),
+                     self.diagnosis_finished, tr("ПРОВЕРЯЕМ ПОДКЛЮЧЕНИЕ"))
 
     def clear_diagnosis(self):
         self.diagnostic_checks = []
-        self.diagnostics_view.setPlainText(tr("Адрес прокси изменён. Запустите проверку для нового адреса."))
+        self.diagnostics_view.setPlainText(tr("Настройки подключения изменены. Запустите проверку снова."))
 
     def diagnosis_finished(self, checks):
         self.diagnostic_checks = checks
@@ -566,7 +608,7 @@ class MainWindow(QMainWindow):
         self.apply_btn.setEnabled(not self.busy and can_apply and not s.running)
         self.apply_btn.setText(tr("Настроить прокси") if s and not s.pending and can_apply else tr("Применить патч"))
         self.restore_btn.setEnabled(bool(not self.busy and s and not s.running and any(i.restorable for i in s.items)))
-        for w in (self.check_btn, self.add_btn, self.save_btn, self.clear_btn):
+        for w in (self.check_btn, self.add_btn, self.save_btn, self.clear_btn, self.connection_clear_btn):
             w.setEnabled(not self.busy)
         for w in self.item_actions:
             w.setEnabled(not self.busy and not (s and s.running))
@@ -645,11 +687,24 @@ class MainWindow(QMainWindow):
             self.hero_kicker.setText(tr("НУЖНО ВАШЕ ВНИМАНИЕ"))
         self.hero_title.setText(title)
         self.hero_text.setText(detail)
-        self.proxy_badge.setText(tr("Порт доступен") if s.proxy_reachable else tr("Нет соединения"))
-        self.proxy_badge.setStyleSheet("color: " + c["green" if s.proxy_reachable else "amber"] + "; font-weight: 600;")
-        env = tr("Адрес сохранён в системе.") if s.proxy_env == self.settings.proxy_url else tr("Адрес в системе отличается от настроек.") if s.proxy_env else tr("Адрес ещё не сохранён в системе.")
-        service = {"running": tr("Служба запущена."), "stopped": tr("Служба остановлена."), "absent": tr("Встроенная служба не найдена."), "unknown": tr("Состояние службы неизвестно.")}.get(s.service, "")
-        self.proxy_detail.setText(self.settings.proxy_url + " · " + env + "\n" + service + tr(" Проверка порта не гарантирует доступ к сервису Google."))
+        url = connection_proxy(self.settings, s.proxy_env)
+        self.connection_clear_btn.setVisible(bool(s.proxy_env and not self.settings.manage_proxy))
+        if url is None:
+            self.connection_title.setText(tr("VPN или прямое подключение"))
+            self.proxy_badge.setText(tr("Без отдельного прокси"))
+            self.proxy_badge.setStyleSheet("color: " + c["muted"] + "; font-weight: 600;")
+            detail = tr("Используется обычное подключение компьютера. Если VPN включён, убедитесь, что он работает для IDE и agy. Наличие и работоспособность VPN автоматически не определяются.")
+        else:
+            self.connection_title.setText(tr("Отдельный прокси") if self.settings.manage_proxy else tr("Сохранён прежний прокси"))
+            self.proxy_badge.setText(tr("Порт доступен") if s.proxy_reachable else tr("Прокси недоступен"))
+            self.proxy_badge.setStyleSheet("color: " + c["green" if s.proxy_reachable else "amber"] + "; font-weight: 600;")
+            if not self.settings.manage_proxy:
+                detail = url + "\n" + tr("Для IDE/agy ещё сохранён прокси. Диагностика проверит его. Если хотите работать только через VPN, уберите сохранённый прокси и перезапустите IDE и терминал.")
+            else:
+                env = tr("Адрес сохранён в системе.") if s.proxy_env == url else tr("Адрес будет сохранён при применении патча или настройке прокси.")
+                detail = url + " · " + env + tr(" Проверка порта не гарантирует доступ к сервису Google.")
+        self.proxy_detail.setText(detail)
+        self.diagnostics_route.setText(tr("Проверяется выбранный или ранее сохранённый прокси.") if url is not None else tr("Проверяется обычное подключение компьютера без отдельного прокси. Системный VPN продолжает действовать."))
         self.last_check.setText(tr("Проверено в ") + s.checked_at + (tr("  ·  Автопроверка раз в минуту") if self.settings.auto_check else ""))
         self.admin_btn.setVisible(os.name == "nt" and not engine.is_admin() and
                                   any(not i.writable for i in s.items if i.state != "patched"))
@@ -707,8 +762,7 @@ class MainWindow(QMainWindow):
                            extra_paths=[self.path_list.item(i).text() for i in range(self.path_list.count())],
                            onboarding_done=self.settings.onboarding_done)
         try:
-            from .backend import validate_proxy
-            validate_proxy(updated.proxy_url)
+            updated.validate_connection()
             if updated.auto_patch and not updated.auto_check:
                 raise ValueError(tr("Для автоматического патча включите автоматическую проверку."))
             changed_login = updated.start_at_login != self.settings.start_at_login
@@ -724,11 +778,11 @@ class MainWindow(QMainWindow):
             self.settings_notice.setText(str(exc))
             self.append_log(str(exc))
             return
-        if updated.proxy_url != self.settings.proxy_url:
+        if (updated.proxy_url, updated.manage_proxy) != (self.settings.proxy_url, self.settings.manage_proxy):
             self.clear_diagnosis()
         self.settings = updated
         self._auto_attempted.clear()
-        self.settings_notice.setText(tr("Настройки сохранены. Адрес прокси будет применён кнопкой на экране обзора."))
+        self.settings_notice.setText(tr("Настройки сохранены. Адрес прокси будет применён кнопкой на экране обзора.") if updated.manage_proxy else tr("Настройки сохранены. Ранее сохранённый прокси удаляется отдельной кнопкой; VPN приложение не меняет."))
         self.apply_theme()
         self.append_log(tr("Настройки сохранены."))
         self.scan()
@@ -779,7 +833,8 @@ class MainWindow(QMainWindow):
     def scan_finished(self, snapshot):
         self.render(snapshot)
         summary = tr("Проверка: установок — %d, нужен патч — %d, порт прокси — %s.") % (
-            len(snapshot.items), len(snapshot.pending), tr("доступен") if snapshot.proxy_reachable else tr("недоступен"))
+            len(snapshot.items), len(snapshot.pending),
+            tr("не используется") if connection_proxy(self.settings, snapshot.proxy_env) is None else tr("доступен") if snapshot.proxy_reachable else tr("недоступен"))
         if summary != getattr(self, "_last_summary", None):
             self.append_log(summary)
             self._last_summary = summary
@@ -851,7 +906,7 @@ class MainWindow(QMainWindow):
         self.apply_targets(updated, targets, restore=not recover, recover=recover)
 
     def clear_proxy(self):
-        if self.busy or not self.confirm(tr("Удаление настройки прокси"), tr("Удалить AG_LS_PROXY из пользовательского окружения? Патч и служба прокси останутся без изменений. Автоматическая настройка прокси будет выключена."), tr("Удалить настройку")):
+        if self.busy or not self.confirm(tr("Удаление настройки прокси"), tr("Убрать сохранённый прокси для IDE и agy? После этого перезапустите IDE и терминал. Патч и VPN останутся без изменений; служба прокси не удаляется."), tr("Удалить настройку")):
             return
         updated = copy.deepcopy(self.settings)
         updated.manage_proxy = False
@@ -861,6 +916,7 @@ class MainWindow(QMainWindow):
             self.report(str(exc), False)
             return
         self.settings = updated
+        self.clear_diagnosis()
         self.manage_proxy.setChecked(False)
         self.run_job(self.backend.clear_proxy, self.operation_finished, tr("УДАЛЯЕМ НАСТРОЙКУ ПРОКСИ"))
 
